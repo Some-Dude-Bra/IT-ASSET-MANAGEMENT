@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CRS'PY — Lending Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#050c0a; --bg2:#0a1512; --bg3:#0f1e18;
+  --teal:#2ee8b0; --teal-dim:#1bc48a; --teal-dark:#0f6e56; --teal-muted:#1a3d30;
+  --text:#e8f5f0; --text-muted:#7aaa96; --text-faint:#3a5e50;
+  --border:rgba(46,232,176,0.12); --border-md:rgba(46,232,176,0.22); --sw:220px;
+}
+html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;}
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:var(--sw);background:var(--bg2);border-right:0.5px solid var(--border);display:flex;flex-direction:column;z-index:100;padding-bottom:24px;}
+.sb-brand{padding:28px 20px 22px;border-bottom:0.5px solid var(--border);}
+.wm{font-family:'Playfair Display',serif;font-weight:900;font-size:18px;color:#fff;text-transform:uppercase;line-height:1.1;}
+.wm span{color:var(--teal);}
+.sub{font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-faint);margin-top:4px;}
+.nav-sec{padding:16px 12px 4px;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-faint);}
+.nl{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--text-muted);text-decoration:none;font-size:13px;border-left:2px solid transparent;transition:all .18s;}
+.nl:hover{color:var(--text);background:rgba(46,232,176,.05);}
+.nl.active{color:var(--teal);background:rgba(46,232,176,.08);border-left-color:var(--teal);font-weight:500;}
+.nl .ic{font-size:15px;width:18px;text-align:center;}
+.sb-foot{margin-top:auto;padding:16px 20px 0;border-top:0.5px solid var(--border);}
+.ur{display:flex;align-items:center;gap:10px;}
+.av{width:32px;height:32px;border-radius:50%;background:var(--teal-muted);border:1.5px solid var(--teal-dark);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--teal);}
+.un{font-size:12px;font-weight:500;color:var(--text);}
+.ur2{font-size:11px;color:var(--text-faint);}
+.main{margin-left:var(--sw);display:flex;flex-direction:column;min-height:100vh;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 32px;border-bottom:0.5px solid var(--border);position:sticky;top:0;z-index:50;background:var(--bg);}
+.topbar-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#fff;}
+.glow-bar{height:3px;background:linear-gradient(to right,var(--teal) 0%,var(--teal-dim) 60%,transparent 100%);opacity:.55;}
+.content{padding:28px 32px;flex:1;}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;font-weight:500;cursor:pointer;border:none;text-decoration:none;transition:all .18s;}
+.btn-primary{background:linear-gradient(135deg,var(--teal),var(--teal-dim));color:#042c1e;}
+.btn-primary:hover{opacity:.88;}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}
+.bg{background:rgba(46,232,176,.12);color:var(--teal);}
+.ba{background:rgba(239,159,39,.12);color:#ef9f27;}
+.br{background:rgba(226,75,74,.12);color:#e24b4a;}
+.bb{background:rgba(55,138,221,.12);color:#378add;}
+.stat-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.sm{background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:14px 18px;}
+.sm-l{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-faint);}
+.sm-v{font-size:22px;font-weight:600;margin-top:4px;}
+.tabs{display:flex;gap:0;border-bottom:0.5px solid var(--border);margin-bottom:20px;}
+.tab{padding:10px 20px;font-size:13px;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .18s;}
+.tab.active{color:var(--teal);border-bottom-color:var(--teal);}
+.tab:hover{color:var(--text);}
+.table-wrap{background:var(--bg2);border:0.5px solid var(--border);border-radius:14px;overflow:hidden;}
+.th{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:0.5px solid var(--border);}
+.tt{font-size:14px;font-weight:500;color:var(--text);}
+table{width:100%;border-collapse:collapse;}
+thead th{padding:12px 16px;text-align:left;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);border-bottom:0.5px solid var(--border);}
+tbody tr{border-bottom:0.5px solid var(--border);transition:background .15s;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:rgba(46,232,176,.04);}
+tbody td{padding:12px 16px;font-size:13px;color:var(--text-muted);}
+.td-p{color:var(--text);font-weight:500;}
+.overdue{color:#e24b4a!important;}
+.action-btn{background:transparent;border:0.5px solid var(--border-md);color:var(--text-muted);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;}
+.action-btn:hover{border-color:var(--teal);color:var(--teal);}
+.action-btn.ret{border-color:rgba(46,232,176,.4);color:var(--teal);}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-brand">
+    <div class="wm">CRS<span>'</span>PY<br>TECH LENDERS</div>
+    <div class="sub">IT Asset Management</div>
+  </div>
+  <div class="nav-sec">Main</div>
+  <a href="02_dashboard.html" class="nl"><span class="ic">⊞</span> Dashboard</a>
+  <div class="nav-sec">Manage</div>
+  <a href="03_assets.html" class="nl"><span class="ic">🖥</span> Asset Inventory</a>
+  <a href="04_lending.html" class="nl active"><span class="ic">↔</span> Lending Tracker</a>
+  <a href="05_users.html" class="nl"><span class="ic">👤</span> Users</a>
+  <div class="nav-sec">Insights</div>
+  <a href="06_reports.html" class="nl"><span class="ic">📊</span> Reports</a>
+  <div class="sb-foot">
+    <div class="ur">
+      <div class="av">AD</div>
+      <div><div class="un">Admin</div><div class="ur2">IT Manager</div></div>
+    </div>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <span class="topbar-title">Lending Tracker</span>
+    <button class="btn btn-primary" onclick="showLendModal()">+ New Loan</button>
+  </div>
+  <div class="glow-bar"></div>
+
+  <div class="content">
+    <div class="stat-mini">
+      <div class="sm"><div class="sm-l">Active Loans</div><div class="sm-v" style="color:var(--teal)">47</div></div>
+      <div class="sm"><div class="sm-l">Overdue</div><div class="sm-v" style="color:#e24b4a">6</div></div>
+      <div class="sm"><div class="sm-l">Due Today</div><div class="sm-v" style="color:#ef9f27">4</div></div>
+      <div class="sm"><div class="sm-l">Returned This Month</div><div class="sm-v" style="color:var(--text)">38</div></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab(this,'active')">Active Loans</div>
+      <div class="tab" onclick="switchTab(this,'overdue')">Overdue</div>
+      <div class="tab" onclick="switchTab(this,'history')">Return History</div>
+    </div>
+
+    <!-- Active Loans -->
+    <div id="tab-active" class="table-wrap">
+      <div class="th"><span class="tt">Active Loans</span>
+        <span style="font-size:12px;color:var(--text-faint);">47 records</span>
+      </div>
+      <table>
+        <thead><tr><th>Loan ID</th><th>Asset</th><th>Borrower</th><th>Dept.</th><th>Date Out</th><th>Due Date</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0047</td><td class="td-p">Dell XPS 15</td><td>R. Narvasa</td><td>Engineering</td><td>Jun 20, 2026</td><td>Jun 27, 2026</td><td><span class="badge bg">Active</span></td><td><button class="action-btn ret">Return</button></td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0046</td><td class="td-p">iPad Pro 12.9</td><td>C. Santos</td><td>Finance</td><td>Jun 18, 2026</td><td>Jun 25, 2026</td><td><span class="badge bg">Active</span></td><td><button class="action-btn ret">Return</button></td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0045</td><td class="td-p">Cisco SG350</td><td>S. Reyes</td><td>IT</td><td>Jun 15, 2026</td><td>Jun 22, 2026</td><td><span class="badge ba">Due Today</span></td><td><button class="action-btn ret">Return</button></td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0044</td><td class="td-p">HP LaserJet</td><td>P. Garcia</td><td>Admin</td><td>Jun 10, 2026</td><td class="overdue">Jun 17, 2026</td><td><span class="badge br">Overdue</span></td><td><button class="action-btn ret">Return</button></td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0043</td><td class="td-p">Surface Pro 9</td><td>C. Santos</td><td>Finance</td><td>Jun 19, 2026</td><td>Jun 26, 2026</td><td><span class="badge bg">Active</span></td><td><button class="action-btn ret">Return</button></td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0042</td><td class="td-p">Lenovo ThinkPad</td><td>R. Narvasa</td><td>Engineering</td><td>Jun 17, 2026</td><td>Jun 24, 2026</td><td><span class="badge bg">Active</span></td><td><button class="action-btn ret">Return</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Overdue (hidden by default) -->
+    <div id="tab-overdue" class="table-wrap" style="display:none;">
+      <div class="th"><span class="tt">Overdue Loans</span>
+        <span style="font-size:12px;color:#e24b4a;">6 overdue</span>
+      </div>
+      <table>
+        <thead><tr><th>Loan ID</th><th>Asset</th><th>Borrower</th><th>Due Date</th><th>Days Overdue</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0044</td><td class="td-p">HP LaserJet</td><td>P. Garcia</td><td class="overdue">Jun 17, 2026</td><td class="overdue">5 days</td><td><button class="action-btn ret">Return</button></td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0039</td><td class="td-p">HP 27" Monitor</td><td>S. Reyes</td><td class="overdue">Jun 14, 2026</td><td class="overdue">8 days</td><td><button class="action-btn ret">Return</button></td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0037</td><td class="td-p">Dell Latitude</td><td>P. Garcia</td><td class="overdue">Jun 10, 2026</td><td class="overdue">12 days</td><td><button class="action-btn ret">Return</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Return History (hidden by default) -->
+    <div id="tab-history" class="table-wrap" style="display:none;">
+      <div class="th"><span class="tt">Return History</span>
+        <span style="font-size:12px;color:var(--text-faint);">38 this month</span>
+      </div>
+      <table>
+        <thead><tr><th>Loan ID</th><th>Asset</th><th>Borrower</th><th>Returned On</th><th>Condition</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0041</td><td class="td-p">MacBook Air M3</td><td>C. Santos</td><td>Jun 21, 2026</td><td><span class="badge bg">Good</span></td><td>—</td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0040</td><td class="td-p">Samsung Monitor</td><td>R. Narvasa</td><td>Jun 20, 2026</td><td><span class="badge bg">Good</span></td><td>—</td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0038</td><td class="td-p">Ubiquiti AP</td><td>S. Reyes</td><td>Jun 18, 2026</td><td><span class="badge ba">Fair</span></td><td>Minor scratches</td></tr>
+          <tr><td style="color:var(--teal);font-size:12px;">LN-0036</td><td class="td-p">iPad Pro 12.9</td><td>P. Garcia</td><td>Jun 15, 2026</td><td><span class="badge bg">Good</span></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- New Loan Modal -->
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:0.5px solid var(--border-md);border-radius:16px;padding:28px 32px;width:500px;max-width:95vw;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px;">
+      <span style="font-size:16px;font-weight:600;color:var(--text);">New Loan</span>
+      <button onclick="closeModal()" style="background:none;border:none;color:var(--text-faint);font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:5px;">Asset</label>
+        <select style="width:100%;padding:9px 12px;background:var(--bg3);border:0.5px solid var(--border);border-radius:8px;color:var(--text-muted);font-family:'Inter',sans-serif;font-size:13px;outline:none;">
+          <option>Dell XPS 15</option><option>MacBook Air M3</option><option>iPad Pro 12.9</option><option>Lenovo ThinkPad X1</option>
+        </select>
+      </div>
+      <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:5px;">Borrower</label>
+        <select style="width:100%;padding:9px 12px;background:var(--bg3);border:0.5px solid var(--border);border-radius:8px;color:var(--text-muted);font-family:'Inter',sans-serif;font-size:13px;outline:none;">
+          <option>R. Narvasa</option><option>C. Santos</option><option>S. Reyes</option><option>P. Garcia</option>
+        </select>
+      </div>
+      <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:5px;">Date Out</label>
+        <input type="date" value="2026-06-22" style="width:100%;padding:9px 12px;background:var(--bg3);border:0.5px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;" /></div>
+      <div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:5px;">Due Date</label>
+        <input type="date" value="2026-06-29" style="width:100%;padding:9px 12px;background:var(--bg3);border:0.5px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;" /></div>
+    </div>
+    <div style="margin-top:14px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:5px;">Notes (optional)</label>
+      <textarea placeholder="Purpose of loan…" rows="2" style="width:100%;padding:9px 12px;background:var(--bg3);border:0.5px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;resize:none;"></textarea></div>
+    <div style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="closeModal()" style="padding:9px 18px;border-radius:8px;border:0.5px solid var(--border-md);background:transparent;color:var(--text-muted);font-family:'Inter',sans-serif;cursor:pointer;">Cancel</button>
+      <button onclick="closeModal()" class="btn btn-primary" style="padding:9px 18px;">Create Loan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(el, id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['active','overdue','history'].forEach(k=>{
+    document.getElementById('tab-'+k).style.display = k===id?'block':'none';
+  });
+}
+function showLendModal(){ document.getElementById('modal').style.display='flex'; }
+function closeModal(){ document.getElementById('modal').style.display='none'; }
+</script>
+</body>
+</html>
