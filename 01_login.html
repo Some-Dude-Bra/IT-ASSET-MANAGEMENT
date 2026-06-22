@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CRS'PY Tech Lenders — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #050c0a; --teal: #2ee8b0; --teal-dim: #1bc48a;
+    --text: #e8f5f0; --text-muted: rgba(200,240,225,0.55); --text-faint: rgba(200,240,225,0.25);
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; overflow: hidden; }
+
+  .top-glow {
+    position: fixed; top: 0; left: 0; right: 0; height: 90px;
+    background: linear-gradient(to bottom, #2ee8b0 0%, #1bc48a 30%, transparent 100%);
+    opacity: 0.8; z-index: 10; pointer-events: none;
+  }
+  .ambient {
+    position: fixed; top: -80px; right: -80px; width: 600px; height: 600px;
+    background: radial-gradient(ellipse at 70% 20%, rgba(30,200,140,0.16) 0%, transparent 65%);
+    pointer-events: none; z-index: 0;
+  }
+  .page {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: 1fr 1fr;
+    align-items: center; min-height: 100vh; padding: 0 6vw; gap: 2rem;
+  }
+  .brand { display: flex; flex-direction: column; justify-content: center; padding-top: 40px; }
+  .brand-name {
+    font-family: 'Playfair Display', serif; font-weight: 900;
+    font-size: clamp(52px, 8vw, 96px); line-height: 0.95;
+    color: #fff; text-transform: uppercase;
+  }
+  .brand-name .apos { color: var(--teal); }
+  .brand-tagline {
+    margin-top: 1.5rem; font-size: 12px; font-weight: 300;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint);
+  }
+  .login-panel { display: flex; flex-direction: column; align-items: center; padding: 48px 40px; }
+  .panel-label {
+    font-size: 14px; letter-spacing: 0.08em; color: var(--text-muted);
+    margin-bottom: 28px; text-align: center; width: 100%;
+  }
+  .field-wrap { position: relative; width: 100%; max-width: 480px; margin-bottom: 20px; }
+  .field-wrap input {
+    width: 100%; padding: 16px 24px; border-radius: 40px; border: none;
+    background: #050c0a; color: var(--text); font-family: 'Inter', sans-serif;
+    font-size: 15px; font-weight: 300; outline: none;
+    box-shadow: 0 0 0 1.5px #2e6b58, 0 0 14px 0 rgba(46,232,176,0.12);
+    transition: box-shadow 0.25s;
+  }
+  .field-wrap input::placeholder { color: rgba(200,240,225,0.38); }
+  .field-wrap input:focus { box-shadow: 0 0 0 1.5px var(--teal), 0 0 22px 0 rgba(46,232,176,0.3); }
+  .btn-login {
+    margin-top: 12px; width: 100%; max-width: 480px;
+    padding: 15px 24px; border-radius: 40px; border: none; cursor: pointer;
+    font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 500;
+    letter-spacing: 0.04em; color: #042c1e;
+    background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dim) 100%);
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .btn-login:hover { opacity: 0.88; transform: translateY(-1px); }
+  .aux-links {
+    margin-top: 20px; display: flex; justify-content: space-between;
+    width: 100%; max-width: 480px;
+  }
+  .aux-links a { font-size: 12px; font-weight: 300; color: var(--text-faint); text-decoration: none; transition: color 0.2s; }
+  .aux-links a:hover { color: var(--teal); }
+  .footer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    padding: 12px 6vw; display: flex; justify-content: space-between;
+    border-top: 0.5px solid rgba(46,232,176,0.1); z-index: 5;
+  }
+  .footer-text { font-size: 11px; font-weight: 300; letter-spacing: 0.06em; color: var(--text-faint); }
+  @media (max-width: 700px) {
+    .page { grid-template-columns: 1fr; padding: 100px 1.5rem 60px; gap: 3rem; }
+    .brand { text-align: center; align-items: center; padding-top: 0; }
+    .login-panel { padding: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="top-glow"></div>
+<div class="ambient"></div>
+
+<main class="page">
+  <section class="brand">
+    <h1 class="brand-name">CRS<span class="apos">'</span>PY<br>TECH<br>LENDERS</h1>
+    <p class="brand-tagline">IT Asset Management System</p>
+  </section>
+
+  <section class="login-panel">
+    <p class="panel-label">Enter Credentials</p>
+    <div class="field-wrap">
+      <input type="text" id="username" placeholder="Username" autocomplete="username" />
+    </div>
+    <div class="field-wrap">
+      <input type="password" id="password" placeholder="Password" autocomplete="current-password" />
+    </div>
+    <button class="btn-login" onclick="handleLogin()">Login in</button>
+    <div class="aux-links">
+      <a href="#">Forgot password?</a>
+      <a href="#">Request access</a>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <span class="footer-text">&copy; 2025 CRS'PY Tech Lenders</span>
+  <span class="footer-text">Secure Portal</span>
+</footer>
+
+<script>
+function handleLogin() {
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value.trim();
+  if (!u || !p) { shake(); return; }
+  const btn = document.querySelector('.btn-login');
+  btn.textContent = 'Signing in…'; btn.style.opacity = '0.7'; btn.disabled = true;
+  setTimeout(() => { window.location.href = '02_dashboard.html'; }, 900);
+}
+function shake() {
+  const panel = document.querySelector('.login-panel');
+  const frames = [6,-6,5,-5,3,-3,0]; let i = 0;
+  const go = () => { if (i >= frames.length) { panel.style.transform=''; return; }
+    panel.style.transform = `translateX(${frames[i]}px)`; i++; setTimeout(go,70); };
+  go();
+}
+document.getElementById('password').addEventListener('keydown', e => { if(e.key==='Enter') handleLogin(); });
+</script>
+</body>
+</html>
