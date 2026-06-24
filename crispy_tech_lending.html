@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crispy Tech Lending</title>
+<link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+
+<!-- ══════════════════════════════
+     LOGIN PAGE
+══════════════════════════════ -->
+<div id="page-login" class="page active">
+  <div class="login-glow"></div>
+  <div class="login-wrap">
+    <div class="login-logo">
+     <img src="CRS’PY TECH LENDING.png" alt="A descriptive text of the image">
+
+   
+      
+    </div>
+    <div class="login-form-side">
+      <p class="login-heading">Enter Credentials</p>
+      <input id="login-user" class="login-field" type="text" placeholder="Username" autocomplete="off">
+      <input id="login-pass" class="login-field" type="password" placeholder="Password">
+      <div id="login-error" class="login-error"></div>
+      <button class="login-btn" onclick="doLogin()">Login in</button>
+      <div class="login-hint">
+        Users: peter · caroline · sebastian · rheniel<br>
+        Password: password (same for all)<br>
+        <br>
+        Level 2 Student/Employee · Level 3 Maintenance<br>
+        Level 4 Manager · Level 5 Admin
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     DASHBOARD PAGE
+══════════════════════════════ -->
+<div id="page-dashboard" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge" id="notif-count">0</span></button>
+      <div>
+        <div class="user-avatar" onclick="logout()">👤</div>
+        <div class="user-label" id="dash-username" style="text-align:center;"></div>
+      </div>
+    </div>
+  </div>
+  <div class="dashboard-grid" id="dashboard-grid">
+    <div class="dash-bg-ring"></div>
+    <div class="dash-bg-ring"></div>
+    <!-- buttons injected by JS -->
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     ASSET INVENTORY PAGE
+══════════════════════════════ -->
+<div id="page-inventory" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge">0</span></button>
+      <div>
+        <div class="user-avatar">👤</div>
+        <div class="user-label" id="inv-username"></div>
+      </div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')">← Back</button>
+    <p class="section-title">Asset Inventory</p>
+    <table class="asset-table">
+      <thead>
+        <tr>
+          <th>Asset ID</th>
+          <th>Model Name</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="inventory-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     ASSET DETAIL / MONITOR PAGE
+══════════════════════════════ -->
+<div id="page-asset-detail" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge">0</span></button>
+      <div class="user-avatar">👤</div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('manage-assets')">← Back to Manage Assets</button>
+    <p class="section-title">Asset Detail</p>
+    <div class="asset-detail-card" id="asset-detail-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MAINTENANCE LOG PAGE
+══════════════════════════════ -->
+<div id="page-maintenance" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge">0</span></button>
+      <div class="user-avatar">👤</div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')">← Back</button>
+    <p class="section-title">Maintenance Log</p>
+    <table class="asset-table" style="margin-bottom:28px;">
+      <thead>
+        <tr>
+          <th>Asset ID</th>
+          <th>Model Name</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="maintenance-tbody"></tbody>
+    </table>
+    <div id="repair-detail" style="display:none;">
+      <div class="repair-card">
+        <div class="repair-img">💻</div>
+        <div class="repair-info">
+          <div class="repair-label" id="repair-device-name">Device Name: Apple Macbook</div>
+          <div class="repair-label" style="margin-top:8px; background:#112;" id="repair-serial">Serial Number: 789765467897654</div>
+        </div>
+        <div class="notes-box">
+          <div class="notes-title">Issues Noted</div>
+          <div class="notes-item" id="repair-issue1">Device drains battery fast</div>
+          <div class="notes-item" id="repair-issue2">Alex lost the charger</div>
+        </div>
+        <div class="notes-box">
+          <div class="notes-title">Repair Notes</div>
+          <div class="notes-item" id="repair-note1">Battery changed</div>
+          <div class="notes-item" id="repair-note2">Replacement charger included</div>
+        </div>
+      </div>
+      <div style="margin-top:20px; text-align:center;">
+        <button class="teal-btn" onclick="markAvailable()" id="mark-avail-btn">Update Status to Available</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MANAGE ASSETS PAGE
+══════════════════════════════ -->
+<div id="page-manage-assets" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge">0</span></button>
+      <div class="user-avatar" style="font-size:13px;">＋</div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')">← Back</button>
+    <p class="section-title">Manage Assets</p>
+    <table class="asset-table" style="margin-bottom:36px;">
+      <thead>
+        <tr>
+          <th>Asset ID</th>
+          <th>Model Name</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="manage-assets-tbody"></tbody>
+    </table>
+
+    <div id="add-asset-section" style="display:none;">
+      <p class="section-title" style="margin-top:12px;">Add New Asset</p>
+      <div class="asset-detail-card">
+        <div class="asset-detail-img">
+          <span>🖼️</span>
+        </div>
+        <div class="asset-fields">
+          <button class="upload-btn">⬆ Upload Photo of Device</button>
+          <div class="field-group">
+            <span class="field-label">Device Name</span>
+            <input class="field-input" id="new-device-name" placeholder="e.g. Dell Latitude 5520">
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <span class="field-label">Serial Number</span>
+              <input class="field-input" id="new-serial" placeholder="SN12345678">
+            </div>
+            <div class="field-group">
+              <span class="field-label">Model</span>
+              <input class="field-input" id="new-model" placeholder="2022 Model">
+            </div>
+          </div>
+          <div class="field-group">
+            <span class="field-label">Asset Description</span>
+            <textarea class="field-textarea" id="new-desc" placeholder="Describe the device…"></textarea>
+          </div>
+          <button class="teal-btn" onclick="addNewAsset()">Add New Asset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     LENDING CART PAGE
+══════════════════════════════ -->
+<div id="page-cart" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon">🛒</div>
+      <span class="cart-page-title">Lending Cart</span>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge">0</span></button>
+      <div class="user-avatar">👤</div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('inventory')">← Back to Inventory</button>
+    <p class="section-title">Lending Cart</p>
+    <table class="asset-table" style="margin-bottom:28px;">
+      <thead>
+        <tr>
+          <th>Asset ID</th>
+          <th>Model Name</th>
+          <th>Status</th>
+          <th>Return Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="cart-tbody"></tbody>
+    </table>
+    <div style="text-align:center; margin-top:20px;">
+      <label style="font-family:'Share Tech Mono',monospace; font-size:12px; color:var(--muted); margin-right:12px;">Return Date:</label>
+      <input type="date" id="return-date" class="field-input" style="width:180px; display:inline-block; margin-right:16px;">
+      <button class="teal-btn" onclick="borrowCart()">Borrow</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     MANAGE EMPLOYEES PAGE
+══════════════════════════════ -->
+<div id="page-employees" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge">0</span></button>
+      <div class="user-avatar">👤</div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')">← Back</button>
+    <p class="section-title">Manage Employees</p>
+
+    <!-- Employee view -->
+    <div id="emp-view-section">
+      <div class="emp-card" style="margin-bottom:28px;">
+        <div class="emp-photo">👤</div>
+        <div class="emp-info">
+          <div class="field-group">
+            <span class="field-label">Employee Name</span>
+            <div class="field-value">Alex Warren</div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <span class="field-label">Years of Service</span>
+              <div class="field-value">5</div>
+            </div>
+            <div class="field-group">
+              <span class="field-label">Department</span>
+              <div class="field-value">Entertainment</div>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <span class="field-label">Job Title</span>
+              <div class="field-value">Musician</div>
+            </div>
+            <div class="field-group">
+              <button class="teal-btn" style="margin-top:20px;">📄 Resume</button>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <span class="field-label">Contact Number</span>
+              <div class="field-value">626-831-9333</div>
+            </div>
+            <div class="field-group">
+              <span class="field-label">Email</span>
+              <div class="field-value">alexwarren@company.com</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add new employee (admin only) -->
+    <div id="add-emp-section" style="display:none;">
+      <p class="section-title">Add New Employee</p>
+      <div class="emp-card">
+        <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+          <div class="emp-photo">🖼️</div>
+          <button class="upload-btn">⬆ Upload Employee Photo</button>
+        </div>
+        <div class="emp-info">
+          <div class="field-group">
+            <span class="field-label">Employee Name</span>
+            <input class="field-input" id="new-emp-name" placeholder="Full Name">
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <span class="field-label">Years of Service</span>
+              <input class="field-input" id="new-emp-years" type="number" placeholder="0">
+            </div>
+            <div class="field-group">
+              <span class="field-label">Department</span>
+              <input class="field-input" id="new-emp-dept" placeholder="Department">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <span class="field-label">Job Title</span>
+              <input class="field-input" id="new-emp-title" placeholder="Job Title">
+            </div>
+            <div class="field-group">
+              <span class="field-label">Upload Resume</span>
+              <button class="upload-btn" style="margin-top:4px;">⬆ Upload Resume</button>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <span class="field-label">Contact Number</span>
+              <input class="field-input" id="new-emp-phone" placeholder="000-000-0000">
+            </div>
+            <div class="field-group">
+              <span class="field-label">Email</span>
+              <input class="field-input" id="new-emp-email" placeholder="email@company.com">
+            </div>
+          </div>
+          <button class="teal-btn" onclick="addEmployee()">Add New Employee</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     DEPARTMENTS PAGE
+══════════════════════════════ -->
+<div id="page-departments" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')">🔔<span class="notif-badge">0</span></button>
+      <div class="user-avatar">👤</div>
+    </div>
+  </div>
+  <div class="dept-grid">
+    <div class="dept-card" style="background:#c00;" onclick="openDept('IT Department','#e05050')">IT Department</div>
+    <div class="dept-card" style="background:#e07000;" onclick="openDept('Finance Department','#e09030')">Finance<br>Department</div>
+    <div class="dept-card" style="background:#c09000;" onclick="openDept('HR Department','#d0a030')">HR<br>Department</div>
+    <div class="dept-card" style="background:#5a9900;" onclick="openDept('Entertainment Department','#7ab830')">Entertainment<br>Department</div>
+    <div class="dept-card" style="background:#009ad0;" onclick="openDept('Research and Development','#30b8e0')">Research &<br>Development</div>
+    <div class="dept-card" style="background:#003caa;" onclick="openDept('Security Department','#1050c0')">Security<br>Department</div>
+    <div class="dept-card" style="background:#7020c0;" onclick="openDept('Legal Department','#9040d0')">Legal<br>Department</div>
+    <div class="dept-card" style="background:#cc0080;" onclick="openDept('Marketing Department','#e030a0')">Marketing<br>Department</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     DEPARTMENT DETAIL PAGE
+══════════════════════════════ -->
+<div id="page-dept-detail" class="page">
+  <div class="topbar" id="dept-topbar" style="background: linear-gradient(90deg, #000 0%, #0a2020 40%, #009ad0 100%);">
+    <div class="topbar-left">
+      <div id="dept-badge" style="background:#c00; color:#fff; padding:8px 18px; border-radius:30px; font-family:'Orbitron',monospace; font-size:13px; font-weight:700; letter-spacing:1px;">IT Department</div>
+    </div>
+    <div class="topbar-right">
+      <button style="background:none; border:none; font-size:30px; cursor:pointer; width:42px; height:42px; border-radius:50%; background:#000; display:flex;align-items:center;justify-content:center;">❓</button>
+      <button class="notif-btn">🔔<span class="notif-badge">1</span></button>
+      <div class="user-avatar">👤</div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('departments')">← Back to Departments</button>
+    <table class="dept-member-table" id="dept-member-table">
+      <thead>
+        <tr>
+          <th id="dept-th-name">Name</th>
+          <th id="dept-th-role">Role</th>
+          <th id="dept-th-level">Level</th>
+        </tr>
+      </thead>
+      <tbody id="dept-member-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     SETTINGS PAGE
+══════════════════════════════ -->
+<div id="page-settings" class="page">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="cart-icon" onclick="gotoCart()">🛒</div>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn">🔔<span class="notif-badge">0</span></button>
+      <div class="user-avatar">👤</div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')">← Back</button>
+    <p class="section-title">Settings</p>
+    <div style="display:flex; flex-direction:column; gap:14px; max-width:420px;">
+      <div class="field-group">
+        <span class="field-label">Current User</span>
+        <div class="field-value" id="settings-username">—</div>
+      </div>
+      <div class="field-group">
+        <span class="field-label">Access Level</span>
+        <div class="field-value" id="settings-level">—</div>
+      </div>
+      <div class="field-group">
+        <span class="field-label">Theme</span>
+        <div class="field-value">Dark (Teal)</div>
+      </div>
+      <button class="teal-btn" style="margin-top:8px; width:fit-content;" onclick="logout()">Logout</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════
+     NOTIFICATION TOAST
+══════════════════════════════ -->
+<div id="toast" class="notification"></div>
+
+<!-- ══════════════════════════════
+     JAVASCRIPT
+══════════════════════════════ -->
+
+<script src="app.js"></script>
+</body>
+
+</html>
