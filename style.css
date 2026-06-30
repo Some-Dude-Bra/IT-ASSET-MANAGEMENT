@@ -121,8 +121,7 @@
     gap: 60px;
     padding: 40px;
   }
-
-  .login-logo {
+.login-logo {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -132,7 +131,6 @@
 .login-logo img {
     width: 450px;
     height: auto;
-    padding:1px;
     max-width: 100%;
 }
   .login-form-side {
@@ -170,7 +168,7 @@
 }
 
 .login-field:focus::placeholder {
-    transform: translateY(-12px);
+    transform: translateY(-15px);
     opacity: 0.7;
     font-size: 12px;
 }
