@@ -1,6 +1,23 @@
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API = 'http://localhost:3000';
 
+// ─── AUTH FETCH ──────────────────────────────────────────────────────────────
+// Wraps fetch() and attaches the logged-in user's clearance level so the server
+// can enforce permissions (create/ban accounts, asset management, wallets, etc).
+function authFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (currentUser) headers['x-user-level'] = String(currentUser.level);
+  return fetch(url, { ...options, headers });
+}
+
+// ─── CLEARANCE LEVELS ────────────────────────────────────────────────────────
+// 1 = Student      — view only, cannot borrow
+// 2 = Employee     — borrow / return assets
+// 3 = Maintenance  — maintenance log + asset management + repair
+// 4 = Manager      — everything except create/ban accounts
+// 5 = Admin        — everything
+const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
+
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser     = null;
 let selectedAssetId = null;
@@ -16,17 +33,6 @@ let assets = [
   { id: 1005, name: 'Tapo Deco Router',     status: 'unavailable', serial: 'TPD-20231201',    desc: 'Mesh Wi-Fi system, 6000 sq ft coverage', borrowedBy: 'HR Dept',    returnDate: '2026-06-30', dailyCost: 15, photoUrl: null },
   { id: 1006, name: 'Samsung Smart Fridge', status: 'available',   serial: 'SSF-20240301',    desc: '21.5" touchscreen, 400L capacity',        borrowedBy: null,         returnDate: null, dailyCost: 10,  photoUrl: null },
 ];
-
-const DEPT_MEMBERS = {
-  'IT Department':             [{ name: 'Rheniel',   role: 'System Administrator', level: 5 }, { name: 'Sebastian', role: 'Network Engineer', level: 4 }],
-  'Finance Department':        [{ name: 'Caroline',  role: 'Finance Analyst',      level: 3 }],
-  'HR Department':             [{ name: 'Peter',     role: 'HR Coordinator',       level: 2 }],
-  'Entertainment Department':  [{ name: 'Alex Warren', role: 'Musician',           level: 2 }],
-  'Research and Development':  [{ name: 'Research Employee 1', role: 'Research Assistant', level: 2 }],
-  'Security Department':       [{ name: 'Security Officer 1',  role: 'Security Officer',   level: 2 }],
-  'Legal Department':          [{ name: 'Legal Assistant 1',   role: 'Legal Assistant',    level: 2 }],
-  'Marketing Department':      [{ name: 'Marketing Staff 1',   role: 'Marketing Associate',level: 2 }],
-};
 
 const DEPT_COLORS = {
   'IT Department': '#c00', 'Finance Department': '#e07000', 'HR Department': '#c09000',
@@ -106,7 +112,24 @@ const AI_JOKES = [
 ];
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
+// Minimum clearance level required to view each page. Pages not listed are open to any logged-in user.
+const PAGE_CLEARANCE = {
+  'returns':         CLEARANCE.EMPLOYEE,
+  'borrow-history':  CLEARANCE.MANAGER,
+  'maintenance':     CLEARANCE.MAINTENANCE,
+  'manage-assets':   CLEARANCE.MAINTENANCE,
+  'employees':       CLEARANCE.MANAGER,
+  'wallets':         CLEARANCE.MANAGER,
+  'accounts':        CLEARANCE.ADMIN,
+  'ban-list':        CLEARANCE.ADMIN,
+};
+
 function nav(page) {
+  const required = PAGE_CLEARANCE[page];
+  if (required && (!currentUser || currentUser.level < required)) {
+    showNotif('⚠ You do not have clearance to access that page');
+    page = 'dashboard';
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   window.scrollTo(0, 0);
@@ -123,6 +146,7 @@ function nav(page) {
     returns:         renderReturns,
     'borrow-history':renderBorrowHistory,
     wallets:         renderWallets,
+    accounts:        renderAccounts,
     'ban-list':      renderBanList,
   };
   if (renders[page]) renders[page]();
@@ -175,7 +199,7 @@ function logout() {
 // ─── PROFILE ─────────────────────────────────────────────────────────────────
 function renderProfile() {
   if (!currentUser) return;
-  const lvlLabels = { 2: 'Level 2 — Student / Employee', 3: 'Level 3 — Manager', 4: 'Level 4 — Senior Manager', 5: 'Level 5 — Admin' };
+  const lvlLabels = { 1: 'Level 1 — Student', 2: 'Level 2 — Employee', 3: 'Level 3 — Maintenance', 4: 'Level 4 — Manager', 5: 'Level 5 — Admin' };
   document.getElementById('profile-name').textContent     = currentUser.fullName;
   document.getElementById('profile-username').textContent = currentUser.username;
   document.getElementById('profile-fullname').textContent = currentUser.fullName;
@@ -188,20 +212,20 @@ function renderProfile() {
 function renderDashboard() {
   if (!currentUser) return;
   const lvl = currentUser.level;
-  document.getElementById('dash-username').textContent = currentUser.fullName;
   document.getElementById('inv-username').textContent  = currentUser.fullName;
 
   const icons = [
-    { icon: 'fa-solid fa-laptop',             label: 'Asset Inventory',   page: 'inventory',       minLevel: 2 },
-    { icon: 'fa-solid fa-rotate-left',        label: 'Return Assets',     page: 'returns',         minLevel: 2 },
-    { icon: 'fa-solid fa-clock-rotate-left',  label: 'Borrow History',    page: 'borrow-history',  minLevel: 3 },
-    { icon: 'fa-solid fa-screwdriver-wrench', label: 'Maintenance Log',   page: 'maintenance',     minLevel: 3 },
-    { icon: 'fa-solid fa-boxes-stacked',      label: 'Manage Assets',     page: 'manage-assets',   minLevel: 3 },
-    { icon: 'fa-solid fa-users',              label: 'Manage Employees',  page: 'employees',       minLevel: 2 },
-    { icon: 'fa-solid fa-building',           label: 'Departments',       page: 'departments',     minLevel: 2 },
-    { icon: 'fa-solid fa-wallet',             label: 'User Wallets',      page: 'wallets',         minLevel: 5 },
-    { icon: 'fa-solid fa-ban',                label: 'Ban List',          page: 'ban-list',        minLevel: 5 },
-    { icon: 'fa-solid fa-gears',              label: 'Settings',          page: 'settings',        minLevel: 2 },
+    { icon: 'fa-solid fa-laptop',             label: 'Asset Inventory',   page: 'inventory',       minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-rotate-left',        label: 'Return Assets',     page: 'returns',         minLevel: CLEARANCE.EMPLOYEE },
+    { icon: 'fa-solid fa-clock-rotate-left',  label: 'Borrow History',    page: 'borrow-history',  minLevel: CLEARANCE.MANAGER },
+    { icon: 'fa-solid fa-screwdriver-wrench', label: 'Maintenance Log',   page: 'maintenance',     minLevel: CLEARANCE.MAINTENANCE },
+    { icon: 'fa-solid fa-boxes-stacked',      label: 'Manage Assets',     page: 'manage-assets',   minLevel: CLEARANCE.MAINTENANCE },
+    { icon: 'fa-solid fa-users',              label: 'Manage Employees',  page: 'employees',       minLevel: CLEARANCE.MANAGER },
+    { icon: 'fa-solid fa-building',           label: 'Departments',       page: 'departments',     minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-wallet',             label: 'User Wallets',      page: 'wallets',         minLevel: CLEARANCE.MANAGER },
+    { icon: 'fa-solid fa-key',                label: 'Accounts',          page: 'accounts',        minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-ban',                label: 'Ban List',          page: 'ban-list',        minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-gears',              label: 'Settings',          page: 'settings',        minLevel: CLEARANCE.STUDENT },
   ];
 
   const grid = document.getElementById('dashboard-grid');
@@ -227,14 +251,14 @@ function updateAllNotifBadges() {
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
 function renderSettings() {
   if (!currentUser) return;
-  const lvlLabels = { 2: 'Level 2 — Student / Employee', 3: 'Level 3 — Manager', 4: 'Level 4 — Senior Manager', 5: 'Level 5 — Admin' };
+  const lvlLabels = { 1: 'Level 1 — Student', 2: 'Level 2 — Employee', 3: 'Level 3 — Maintenance', 4: 'Level 4 — Manager', 5: 'Level 5 — Admin' };
   document.getElementById('settings-username').textContent = currentUser.fullName;
   document.getElementById('settings-level').textContent    = lvlLabels[currentUser.level] || 'Level ' + currentUser.level;
-  document.getElementById('settings-create-account-section').style.display = currentUser.level >= 5 ? 'block' : 'none';
+  document.getElementById('settings-create-account-section').style.display = currentUser.level >= CLEARANCE.ADMIN ? 'block' : 'none';
 }
 
 async function submitSettingsCreateAccount() {
-  if (!currentUser || currentUser.level < 5) { showNotif('⚠ Only admins can create accounts'); return; }
+  if (!currentUser || currentUser.level < CLEARANCE.ADMIN) { showNotif('⚠ Only admins can create accounts'); return; }
   const fullName = document.getElementById('sca-fullname').value.trim();
   const username = document.getElementById('sca-username').value.trim();
   const password = document.getElementById('sca-password').value;
@@ -246,9 +270,9 @@ async function submitSettingsCreateAccount() {
   if (username.includes(' ')) { errEl.textContent = '⚠ No spaces in username';         return; }
   if (password.length < 4)    { errEl.textContent = '⚠ Password too short (min 4)';   return; }
   if (password !== confirm)   { errEl.textContent = '⚠ Passwords do not match';        return; }
-  const roles = { 2: 'Employee', 3: 'Manager', 4: 'Senior Manager', 5: 'Admin' };
+  const roles = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
   try {
-    const res  = await fetch(`${API}/register`, {
+    const res  = await authFetch(`${API}/register`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, fullName, level, role: roles[level] || 'Employee' }),
       signal: AbortSignal.timeout(4000),
@@ -291,7 +315,12 @@ async function loadAssets() {
         desc:      `${a.Brand} ${a.Model}`,
         dailyCost: parseFloat(a.DailyCost) || 0,
         photoUrl:  a.PhotoPath ? `${API}/uploads/${a.PhotoPath}` : null,
-        borrowedBy: null, returnDate: null,
+        // BorrowedBy/DueDate come from the latest BorrowLog row (server-side join).
+        // Only show as "last user" when that borrow is still active; a returned
+        // borrow still shows the last person who had it, which is expected.
+        borrowedBy: a.BorrowedBy || null,
+        returnDate: a.DueDate ? new Date(a.DueDate).toISOString().slice(0, 10) : null,
+        repairNotes: a.RepairNotes || '',
       }));
     }
   } catch (err) { console.warn('Using fallback asset data:', err.message); }
@@ -310,7 +339,7 @@ function statusHtml(s) {
 function renderInventory() {
   const tbody     = document.getElementById('inventory-tbody');
   const lvl       = currentUser ? currentUser.level : 1;
-  const canBorrow = lvl >= 2;
+  const canBorrow = lvl >= CLEARANCE.EMPLOYEE;
   tbody.innerHTML = assets.map(a => {
     const inCart = cart.find(c => c.id === a.id);
     const canAdd = canBorrow && a.status === 'available' && !inCart;
@@ -377,7 +406,7 @@ async function borrowCart() {
   if (!rd)                                   { showNotif('Please set a return date'); return; }
 
   try {
-    const res = await fetch(`${API}/borrow`, {
+    const res = await authFetch(`${API}/borrow`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ assetIds: cart.map(a => a.id), borrowedBy: currentUser.username, dueDate: rd }),
     });
@@ -457,7 +486,7 @@ async function confirmReturn() {
   const logId = pendingReturnLogId;
   closeReturnModal();
   try {
-    const res  = await fetch(`${API}/return/${logId}`, {
+    const res  = await authFetch(`${API}/return/${logId}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ returnedBy: currentUser?.username }),
     });
@@ -521,19 +550,38 @@ function renderMaintenance() {
 }
 
 function openRepair(id) {
+  if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
   selectedAssetId = id;
   const asset = assets.find(a => a.id === id);
   document.getElementById('repair-device-name').textContent = 'Device Name: ' + asset.name;
   document.getElementById('repair-serial').textContent      = 'Serial Number: ' + asset.serial;
   document.getElementById('repair-issue1').textContent  = asset.status === 'service' ? 'Device reported issues' : 'No issues reported';
   document.getElementById('repair-issue2').textContent  = asset.borrowedBy ? asset.borrowedBy + ' reported this' : 'No additional notes';
-  document.getElementById('repair-note1').textContent   = 'Under inspection';
-  document.getElementById('repair-note2').textContent   = 'Repair in progress';
+  document.getElementById('repair-notes-input').value   = asset.repairNotes || '';
   document.getElementById('repair-detail').style.display = 'block';
   document.getElementById('repair-detail').scrollIntoView({ behavior: 'smooth' });
 }
 
+async function saveRepairNotes() {
+  if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
+  const asset = assets.find(a => a.id === selectedAssetId);
+  if (!asset) return;
+  const notes = document.getElementById('repair-notes-input').value;
+  try {
+    const res  = await authFetch(`${API}/assets/${asset.id}/notes`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, updatedBy: currentUser.username }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      asset.repairNotes = notes;
+      showNotif('✓ Repair notes saved');
+    } else { showNotif('Failed: ' + (data.message || 'Unknown')); }
+  } catch { showNotif('Server offline — notes not saved'); }
+}
+
 function markAvailable() {
+  if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
   const asset = assets.find(a => a.id === selectedAssetId);
   if (asset) { asset.status = 'available'; asset.borrowedBy = null; asset.returnDate = null; }
   showNotif(`✓ ${asset?.name} status updated to Available`);
@@ -551,17 +599,18 @@ function renderManageAssets() {
       <td>${a.name}</td>
       <td style="color:#00e5c8;">${peso(a.dailyCost)}/day</td>
       <td>${statusHtml(a.status)}</td>
+      <td>${a.borrowedBy || '—'}</td>
       <td><button class="teal-btn" onclick="openAssetDetail(${a.id})">Monitor</button></td>
     </tr>
   `).join('');
-  document.getElementById('add-asset-section').style.display = lvl >= 3 ? 'block' : 'none';
+  document.getElementById('add-asset-section').style.display = lvl >= CLEARANCE.MAINTENANCE ? 'block' : 'none';
 }
 
 function openAssetDetail(id) {
   selectedAssetId = id;
   const a        = assets.find(x => x.id === id);
   const container = document.getElementById('asset-detail-content');
-  const canEdit  = currentUser && currentUser.level >= 3;
+  const canEdit  = currentUser && currentUser.level >= CLEARANCE.MAINTENANCE;
   const photoSrc = a.photoUrl;
   const photoHtml = photoSrc
     ? `<img id="asset-photo-img" src="${photoSrc}" alt="${a.name}" style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:2px solid var(--teal,#00bcd4);">`
@@ -622,7 +671,7 @@ async function saveAssetChanges() {
   const a    = assets.find(x => x.id === selectedAssetId);
   if (a) { a.status = sel; a.dailyCost = cost; }
   try {
-    await fetch(`${API}/assets/${selectedAssetId}/cost`, {
+    await authFetch(`${API}/assets/${selectedAssetId}/cost`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dailyCost: cost }),
     });
@@ -642,7 +691,7 @@ async function addNewAsset() {
   if (!serial)          { showNotif('Please enter a Serial Number');  return; }
   if (!category)        { showNotif('Please select a Category');       return; }
   try {
-    const res  = await fetch(`${API}/assets`, {
+    const res  = await authFetch(`${API}/assets`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ brand, model, serialNumber: serial, category, status, description: desc, dailyCost: cost }),
     });
@@ -681,7 +730,7 @@ async function uploadPhoto(assetId) {
   formData.append('photo', input.files[0]);
   showNotif('⬆ Uploading…');
   try {
-    const res  = await fetch(`${API}/assets/${assetId}/photo`, { method: 'POST', body: formData });
+    const res  = await authFetch(`${API}/assets/${assetId}/photo`, { method: 'POST', body: formData });
     if (!res.ok) { const err = await res.json(); showNotif('Upload failed: ' + (err.message || res.status)); return; }
     const data = await res.json();
     const asset = assets.find(a => a.id === assetId);
@@ -694,7 +743,7 @@ async function uploadPhoto(assetId) {
 async function deletePhoto(assetId) {
   if (!confirm('Remove this photo?')) return;
   try {
-    const res = await fetch(`${API}/assets/${assetId}/photo`, { method: 'DELETE' });
+    const res = await authFetch(`${API}/assets/${assetId}/photo`, { method: 'DELETE' });
     if (!res.ok) { showNotif('Delete failed'); return; }
     const asset = assets.find(a => a.id === assetId);
     if (asset) asset.photoUrl = null;
@@ -728,15 +777,31 @@ async function loadEmployees() {
   } catch (err) { console.warn('Could not load employees:', err.message); }
 }
 
+const DEPT_OPTIONS = [
+  'IT Department', 'Finance Department', 'HR Department', 'Entertainment Department',
+  'Research and Development', 'Security Department', 'Legal Department', 'Marketing Department',
+];
+
 function renderEmployees() {
   const lvl = currentUser ? currentUser.level : 0;
-  document.getElementById('add-emp-section').style.display = lvl >= 3 ? 'block' : 'none';
+  const canManage = lvl >= CLEARANCE.MANAGER;
+  document.getElementById('add-emp-section').style.display = canManage ? 'block' : 'none';
   const container = document.getElementById('emp-view-section');
   if (!employees || employees.length === 0) {
     container.innerHTML = `<div class="emp-card"><div class="emp-info"><div class="field-value">No employees loaded from database</div></div></div>`;
     return;
   }
-  container.innerHTML = employees.map(e => `
+  container.innerHTML = employees.map(e => {
+    const deptField = canManage ? `
+        <div class="field-group">
+          <span class="field-label">Department</span>
+          <select class="field-input" id="emp-dept-${e.EmployeeID}">
+            <option value="">-- Not Set --</option>
+            ${DEPT_OPTIONS.map(d => `<option value="${d}" ${e.Department === d ? 'selected' : ''}>${d}</option>`).join('')}
+          </select>
+        </div>` : `
+        <div class="field-group"><span class="field-label">Department</span><div class="field-value">${e.Department || '—'}</div></div>`;
+    return `
     <div class="emp-card" style="margin-bottom:16px;">
       <div class="emp-photo">
         <img src="${API}/employees/${e.EmployeeID}/photo" alt="${e.FirstName}"
@@ -749,12 +814,29 @@ function renderEmployees() {
           <div class="field-group"><span class="field-label">Last Name</span><div class="field-value">${e.LastName}</div></div>
         </div>
         <div class="field-row">
-          <div class="field-group"><span class="field-label">Department</span><div class="field-value">${e.Department || '—'}</div></div>
+          ${deptField}
           <div class="field-group"><span class="field-label">Email</span><div class="field-value">${e.Email || '—'}</div></div>
         </div>
+        ${canManage ? `<button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="saveEmployeeDept(${e.EmployeeID})">Save Department</button>` : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+}
+
+async function saveEmployeeDept(employeeId) {
+  const dept = document.getElementById(`emp-dept-${employeeId}`).value;
+  try {
+    const res = await authFetch(`${API}/employees/${employeeId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ department: dept || null }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showNotif('✓ Department updated');
+      await loadEmployees();
+      renderEmployees();
+    } else { showNotif('Failed: ' + (data.message || 'Unknown')); }
+  } catch { showNotif('Server offline'); }
 }
 
 function previewEmpPhoto(event) {
@@ -780,7 +862,7 @@ async function addEmployee() {
   if (!firstName || !lastName) { showNotif('Please enter First and Last name'); return; }
   if (!dept)                   { showNotif('Please select a Department');        return; }
   try {
-    const res = await fetch(`${API}/employees`, {
+    const res = await authFetch(`${API}/employees`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName, lastName, department: dept, jobTitle: title, email,
         photoData: empPhotoData, photoMime: empPhotoMime }),
@@ -788,6 +870,9 @@ async function addEmployee() {
     const data = await res.json();
     if (res.ok) {
       showNotif(`✓ Employee "${firstName} ${lastName}" added!`);
+      if (data.account) {
+        alert(`Account created for ${firstName} ${lastName}:\n\nUsername: ${data.account.username}\nPassword: ${data.account.password}\n\nShare these with the employee. You can view this anytime in Accounts (Admin).`);
+      }
       ['new-emp-firstname','new-emp-lastname','new-emp-title','new-emp-email'].forEach(id => document.getElementById(id).value = '');
       document.getElementById('new-emp-dept').value = '';
       document.getElementById('new-emp-photo-display').innerHTML = '<i class="fa-solid fa-image"></i>';
@@ -799,13 +884,36 @@ async function addEmployee() {
   } catch { showNotif('Server offline'); }
 }
 
-// ─── WALLETS (admin) ─────────────────────────────────────────────────────────
+// ─── ACCOUNTS (admin only — shows plaintext passwords) ───────────────────────
+async function renderAccounts() {
+  if (!currentUser || currentUser.level < CLEARANCE.ADMIN) { showNotif('Admin only'); nav('dashboard'); return; }
+  const tbody = document.getElementById('accounts-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
+  try {
+    const res  = await authFetch(`${API}/accounts`);
+    const rows = await res.json();
+    if (!res.ok) { showNotif('Error: ' + (rows.message || 'Unknown')); return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">No accounts found.</td></tr>'; return; }
+    tbody.innerHTML = rows.map(u => `
+      <tr ${u.isBanned ? 'style="background:rgba(255,68,68,0.05);"' : ''}>
+        <td>${u.username}${u.isBanned ? ' <span style="color:#ff8888;">🚫</span>' : ''}</td>
+        <td style="font-family:'Share Tech Mono',monospace;color:#ffcc00;">${u.password}</td>
+        <td>${u.fullName}</td>
+        <td>${u.role} (Lvl ${u.level})</td>
+        <td>${u.Department || '—'}</td>
+        <td style="color:#00e5c8;">${peso(u.wallet)}</td>
+      </tr>
+    `).join('');
+  } catch { tbody.innerHTML = '<tr><td colspan="6" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>'; }
+}
+
+// ─── WALLETS (manager/admin) ─────────────────────────────────────────────────
 async function renderWallets() {
-  if (!currentUser || currentUser.level < 5) { showNotif('Admin only'); nav('dashboard'); return; }
+  if (!currentUser || currentUser.level < CLEARANCE.MANAGER) { showNotif('Manager access required'); nav('dashboard'); return; }
   const tbody = document.getElementById('wallets-tbody');
   tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
   try {
-    const res  = await fetch(`${API}/wallets`);
+    const res  = await authFetch(`${API}/wallets`);
     const rows = await res.json();
     if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">No users found.</td></tr>'; return; }
     tbody.innerHTML = rows.map(u => `
@@ -841,7 +949,7 @@ async function walletAction(type) {
   if (!amount || amount <= 0) { showNotif('Enter a valid amount'); return; }
   try {
     const endpoint = type === 'add' ? '/wallet/add' : '/wallet/deduct';
-    const res  = await fetch(`${API}${endpoint}`, {
+    const res  = await authFetch(`${API}${endpoint}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: walletTarget.username, amount, note }),
     });
@@ -857,7 +965,7 @@ async function walletAction(type) {
 // ─── BAN LIST ────────────────────────────────────────────────────────────────
 async function renderBanList() {
   const tbody     = document.getElementById('ban-list-tbody');
-  const isAdmin   = currentUser && currentUser.level >= 5;
+  const isAdmin   = currentUser && currentUser.level >= CLEARANCE.ADMIN;
   document.getElementById('ban-form-section').style.display    = isAdmin ? 'block' : 'none';
   document.getElementById('ban-unban-header').style.display    = isAdmin ? '' : 'none';
   tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
@@ -882,7 +990,7 @@ async function renderBanList() {
 }
 
 async function banUser() {
-  if (!currentUser || currentUser.level < 5) { showNotif('Admin only'); return; }
+  if (!currentUser || currentUser.level < CLEARANCE.ADMIN) { showNotif('Admin only'); return; }
   const username = document.getElementById('ban-username-input').value.trim();
   const reason   = document.getElementById('ban-reason-input').value.trim();
   if (!username) { showNotif('Enter a username to ban'); return; }
@@ -891,7 +999,7 @@ async function banUser() {
   const confirmed = confirm(`Ban "${username}"?\nReason: ${reason}`);
   if (!confirmed) return;
   try {
-    const res  = await fetch(`${API}/ban`, {
+    const res  = await authFetch(`${API}/ban`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, reason, bannedBy: currentUser.username }),
     });
@@ -909,7 +1017,7 @@ async function unbanUser(username) {
   const confirmed = confirm(`Unban "${username}"?`);
   if (!confirmed) return;
   try {
-    const res  = await fetch(`${API}/unban`, {
+    const res  = await authFetch(`${API}/unban`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username }),
     });
@@ -926,13 +1034,14 @@ function openDept(name, color) {
   badge.style.background = DEPT_COLORS[name] || color;
   const topbar = document.getElementById('dept-topbar');
   topbar.style.background = `linear-gradient(90deg, #000 0%, #0a0a20 40%, ${DEPT_COLORS[name] || color} 100%)`;
-  const tbody   = document.getElementById('dept-member-tbody');
-  const members = DEPT_MEMBERS[name] || [];
-  const roleClass = { 2: 'role-2', 3: 'role-3', 4: 'role-4', 5: 'role-5' };
-  const roleName  = { 2: 'Employee', 3: 'Manager', 4: 'Senior Manager', 5: 'Admin' };
-  tbody.innerHTML = members.length ? members.map(m => `
-    <tr><td>${m.name}</td><td>${m.role}</td><td><span class="role-badge ${roleClass[m.level] || 'role-2'}">${roleName[m.level] || 'Employee'}</span></td></tr>
-  `).join('') : `<tr><td colspan="3" style="color:var(--muted);padding:20px;text-align:center;">No members</td></tr>`;
+  const tbody = document.getElementById('dept-member-tbody');
+
+  // Real employees, sorted into this department from the actual Employees table
+  const members = (employees || []).filter(e => e.Department === name);
+  tbody.innerHTML = members.length ? members.map(e => `
+    <tr><td>${e.FirstName} ${e.LastName}</td><td>${e.Email || '—'}</td></tr>
+  `).join('') : `<tr><td colspan="2" style="color:var(--muted);padding:20px;text-align:center;">No employees assigned to this department yet</td></tr>`;
+
   const th_color = DEPT_COLORS[name] || color;
   document.querySelectorAll('#dept-member-table th').forEach(th => {
     th.style.borderBottomColor = th_color;
