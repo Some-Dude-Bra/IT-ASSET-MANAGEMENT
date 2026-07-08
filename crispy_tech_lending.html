@@ -45,7 +45,6 @@
       <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div>
         <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
-        <div class="user-label" id="dash-username" style="text-align:center;"></div>
       </div>
     </div>
   </div>
@@ -155,8 +154,9 @@
         </div>
         <div class="notes-box">
           <div class="notes-title">Repair Notes</div>
-          <div class="notes-item" id="repair-note1">—</div>
-          <div class="notes-item" id="repair-note2">—</div>
+          <textarea id="repair-notes-input" placeholder="Write repair notes here…"
+            style="width:100%;min-height:80px;margin-top:8px;background:#0a0a0a;border:1px solid var(--teal-dark,#00695c);border-radius:8px;color:#e0fff8;font-family:'Share Tech Mono',monospace;font-size:12px;padding:8px;resize:vertical;"></textarea>
+          <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="saveRepairNotes()">💾 Save Notes</button>
         </div>
       </div>
       <div style="margin-top:20px;text-align:center;">
@@ -179,7 +179,7 @@
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
     <p class="section-title">Manage Assets</p>
     <table class="asset-table" style="margin-bottom:36px;">
-      <thead><tr><th>Asset ID</th><th>Model Name</th><th>Daily Cost</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Asset ID</th><th>Model Name</th><th>Daily Cost</th><th>Status</th><th>Last User</th><th></th></tr></thead>
       <tbody id="manage-assets-tbody"></tbody>
     </table>
     <div id="add-asset-section" style="display:none;">
@@ -390,7 +390,7 @@
   <div class="page-content">
     <button class="back-btn" onclick="nav('departments')"><i class="fa-solid fa-arrow-left"></i> Back to Departments</button>
     <table class="dept-member-table" id="dept-member-table">
-      <thead><tr><th>Name</th><th>Role</th><th>Level</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th></tr></thead>
       <tbody id="dept-member-tbody"></tbody>
     </table>
   </div>
@@ -412,6 +412,28 @@
     <table class="asset-table">
       <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Balance</th><th></th></tr></thead>
       <tbody id="wallets-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════ ACCOUNTS (Admin only) ══════ -->
+<div id="page-accounts" class="page">
+  <div class="topbar">
+    <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <p class="section-title">Accounts</p>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">
+      ⚠ Passwords are shown in plaintext here for Admin reference. Treat this page as confidential.
+    </p>
+    <table class="asset-table">
+      <thead><tr><th>Username</th><th>Password</th><th>Full Name</th><th>Role</th><th>Department</th><th>Wallet</th></tr></thead>
+      <tbody id="accounts-tbody"></tbody>
     </table>
   </div>
 </div>
@@ -482,26 +504,7 @@
       <div class="field-group"><span class="field-label">Current User</span><div class="field-value" id="settings-username">—</div></div>
       <div class="field-group"><span class="field-label">Access Level</span><div class="field-value" id="settings-level">—</div></div>
       <div class="field-group"><span class="field-label">Theme</span><div class="field-value">Dark (Teal)</div></div>
-      <div id="settings-create-account-section" style="display:none;">
-        <p class="section-title" style="margin-top:16px;margin-bottom:12px;">Create Account</p>
-        <div style="display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;">
-          <input id="sca-fullname"  class="field-input" type="text"     placeholder="Full Name">
-          <input id="sca-username"  class="field-input" type="text"     placeholder="Username" autocomplete="off">
-          <input id="sca-password"  class="field-input" type="password" placeholder="Password">
-          <input id="sca-password2" class="field-input" type="password" placeholder="Confirm Password">
-          <div class="field-group">
-            <span class="field-label">Access Level</span>
-            <select id="sca-level" class="field-input">
-              <option value="2">Level 2 — Student / Employee</option>
-              <option value="3">Level 3 — Manager</option>
-              <option value="4">Level 4 — Senior Manager</option>
-              <option value="5">Level 5 — Admin</option>
-            </select>
-          </div>
-          <div id="sca-error" style="color:#ff4444;font-size:11px;min-height:16px;font-family:'Share Tech Mono',monospace;"></div>
-          <button class="teal-btn" onclick="submitSettingsCreateAccount()">Create Account</button>
-        </div>
-      </div>
+      
       <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="logout()">
         <i class="fa-solid fa-right-from-bracket"></i> Logout
       </button>
