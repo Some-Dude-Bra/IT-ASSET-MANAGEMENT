@@ -77,16 +77,23 @@ function initTables() {
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS bannedAt  DATETIME      DEFAULT NULL',
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS bannedBy  VARCHAR(50)   DEFAULT NULL',
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS wallet    DECIMAL(10,2) DEFAULT 0.00',
+     'ALTER TABLE Users ADD COLUMN IF NOT EXISTS EmployeeID INT DEFAULT NULL',
     ].forEach(sql => db.query(sql, () => {}));
-    // Seed default users
+    // Seed default users — clearance scale: 1=Student, 2=Employee, 3=Maintenance, 4=Manager, 5=Admin
     db.query('SELECT COUNT(*) AS cnt FROM Users', (e, rows) => {
       if (!e && rows[0].cnt === 0) {
         db.query('INSERT INTO Users (username,password,fullName,level,role) VALUES ?', [[
-          ['peter',    'password','Peter Parker',    1,'Admin'],
+          ['peter',    'password','Peter Parker',    5,'Admin'],
           ['caroline', 'password','Caroline Reyes',  2,'Employee'],
           ['sebastian','password','Sebastian Cruz',  2,'Employee'],
           ['rheniel',  'password','Rheniel Santos',  2,'Employee'],
         ]], iErr => { if (iErr) console.error('Seed error:',iErr.message); else console.log('✓ Default users seeded'); });
+      } else if (!e) {
+        // One-time migration for installs seeded under the OLD scheme, where
+        // level=1 + role='Admin' meant "Admin". Under the new 5-tier scale,
+        // level 1 means "Student", so bump any such accounts up to level 5.
+        db.query("UPDATE Users SET level=5 WHERE role='Admin' AND level=1",
+          mErr => { if (mErr) console.error('Admin level migration:', mErr.message); });
       }
     });
   });
@@ -116,6 +123,14 @@ function initTables() {
 
   runQ('ALTER TABLE BorrowLog ADD COLUMN IF NOT EXISTS ReturnedBy VARCHAR(50) DEFAULT NULL', 'BorrowLog ReturnedBy');
 
+  // ── MaintenanceNotes table (one editable notes field per asset) ───────────
+  runQ(`CREATE TABLE IF NOT EXISTS MaintenanceNotes (
+    AssetID   INT PRIMARY KEY,
+    Notes     TEXT,
+    UpdatedBy VARCHAR(50) DEFAULT NULL,
+    UpdatedAt DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`, 'MaintenanceNotes table');
+
   // ── WalletLog table ────────────────────────────────────────────────────────
   runQ(`CREATE TABLE IF NOT EXISTS WalletLog (
     TxID      INT AUTO_INCREMENT PRIMARY KEY,
@@ -125,6 +140,50 @@ function initTables() {
     Note      VARCHAR(255),
     CreatedAt DATETIME      DEFAULT CURRENT_TIMESTAMP
   )`, 'WalletLog table');
+}
+
+// ─── CLEARANCE LEVELS ────────────────────────────────────────────────────────
+// 1 = Student   (view only, cannot borrow)
+// 2 = Employee  (borrow / return)
+// 3 = Maintenance (maintenance log + asset management + repair)
+// 4 = Manager   (everything except create/ban accounts)
+// 5 = Admin     (everything)
+const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
+const ROLE_NAMES = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
+
+// Simple header-based level gate. The frontend sends the acting user's level in
+// the 'x-user-level' header (set automatically by app.js on every request once logged in).
+function requireLevel(minLevel) {
+  return (req, res, next) => {
+    const lvl = parseInt(req.headers['x-user-level'], 10);
+    if (!lvl || lvl < minLevel) {
+      return res.status(403).json({ message: 'Insufficient clearance level for this action' });
+    }
+    next();
+  };
+}
+
+// ─── ACCOUNT AUTO-GENERATION HELPERS ─────────────────────────────────────────
+function slugify(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function randomPassword(len = 8) {
+  const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = '';
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+// Finds a free username of the form first.last, first.last2, first.last3, ...
+function findFreeUsername(firstName, lastName, cb) {
+  const base = `${slugify(firstName)}.${slugify(lastName)}`;
+  q('SELECT username FROM Users WHERE username LIKE ?', [`${base}%`], (err, rows) => {
+    if (err) return cb(err);
+    const taken = new Set(rows.map(r => r.username));
+    if (!taken.has(base)) return cb(null, base);
+    let n = 2;
+    while (taken.has(`${base}${n}`)) n++;
+    cb(null, `${base}${n}`);
+  });
 }
 
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
@@ -144,14 +203,16 @@ app.post('/login', (req, res) => {
     });
 });
 
-app.post('/register', (req, res) => {
+// Only Admin (level 5) may create accounts
+app.post('/register', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   const { username, password, fullName, level, role } = req.body;
   if (!username || !password || !fullName) return res.status(400).json({ message: 'username, password, fullName required' });
+  const lvl = parseInt(level, 10) || CLEARANCE.EMPLOYEE;
   q('SELECT username FROM Users WHERE username=?', [username], (cErr, rows) => {
     if (cErr) return res.status(500).json({ message: cErr.message });
     if (rows.length) return res.status(409).json({ message: 'Username already taken' });
     q('INSERT INTO Users (username,password,fullName,level,role) VALUES (?,?,?,?,?)',
-      [username, password, fullName, level||2, role||'Employee'], (iErr) => {
+      [username, password, fullName, lvl, role || ROLE_NAMES[lvl] || 'Employee'], (iErr) => {
         if (iErr) return res.status(500).json({ message: iErr.message });
         res.status(201).json({ message: 'Account created', username });
       });
@@ -167,7 +228,8 @@ app.get('/bans', (_req, res) => {
     });
 });
 
-app.post('/ban', (req, res) => {
+// Only Admin (level 5) may ban/unban accounts
+app.post('/ban', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   const { username, reason, bannedBy } = req.body;
   if (!username) return res.status(400).json({ message: 'username required' });
   q('UPDATE Users SET isBanned=1, banReason=?, bannedAt=NOW(), bannedBy=? WHERE username=?',
@@ -177,7 +239,7 @@ app.post('/ban', (req, res) => {
     });
 });
 
-app.post('/unban', (req, res) => {
+app.post('/unban', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   const { username } = req.body;
   if (!username) return res.status(400).json({ message: 'username required' });
   q('UPDATE Users SET isBanned=0, banReason=NULL, bannedAt=NULL, bannedBy=NULL WHERE username=?',
@@ -188,7 +250,7 @@ app.post('/unban', (req, res) => {
 });
 
 // ── WALLET ────────────────────────────────────────────────────────────────────
-app.get('/wallets', (_req, res) => {
+app.get('/wallets', requireLevel(CLEARANCE.MANAGER), (_req, res) => {
   q('SELECT username,fullName,role,level,wallet FROM Users ORDER BY username', [], (err, rows) => {
     if (err) return res.status(500).json({ message: err.message });
     res.json(rows);
@@ -210,7 +272,7 @@ app.get('/wallet/:username/history', (req, res) => {
     });
 });
 
-app.post('/wallet/add', (req, res) => {
+app.post('/wallet/add', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   const { username, amount, note } = req.body;
   const amt = parseFloat(amount);
   if (!username || !amt || amt <= 0) return res.status(400).json({ message: 'username and positive amount required' });
@@ -224,7 +286,7 @@ app.post('/wallet/add', (req, res) => {
   });
 });
 
-app.post('/wallet/deduct', (req, res) => {
+app.post('/wallet/deduct', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   const { username, amount, note } = req.body;
   const amt = parseFloat(amount);
   if (!username || !amt || amt <= 0) return res.status(400).json({ message: 'username and positive amount required' });
@@ -244,14 +306,40 @@ app.post('/wallet/deduct', (req, res) => {
 
 // ── ASSETS ────────────────────────────────────────────────────────────────────
 app.get('/assets', (_req, res) => {
-  q('SELECT AssetID,SerialNumber,Brand,Model,Status,PhotoPath,DailyCost,Description FROM HardwareInventory ORDER BY AssetID',
+  // Join in the most recent BorrowLog row per asset (via ROW_NUMBER) so "Last User" / Return Date aren't blank,
+  // plus any saved MaintenanceNotes for the Repair screen.
+  q(`SELECT hi.AssetID, hi.SerialNumber, hi.Brand, hi.Model, hi.Status, hi.PhotoPath, hi.DailyCost, hi.Description,
+            lb.BorrowedBy, lb.DueDate, lb.Status AS BorrowStatus,
+            mn.Notes AS RepairNotes
+     FROM HardwareInventory hi
+     LEFT JOIN (
+       SELECT AssetID, BorrowedBy, DueDate, Status,
+              ROW_NUMBER() OVER (PARTITION BY AssetID ORDER BY BorrowedAt DESC) AS rn
+       FROM BorrowLog
+     ) lb ON lb.AssetID = hi.AssetID AND lb.rn = 1
+     LEFT JOIN MaintenanceNotes mn ON mn.AssetID = hi.AssetID
+     ORDER BY hi.AssetID`,
     [], (err, rows) => {
       if (err) { console.error('ASSETS:', err.message); return res.status(500).json({ message: err.message }); }
       res.json(rows);
     });
 });
 
-app.post('/assets', (req, res) => {
+// Save/update repair notes for an asset — Maintenance clearance (level 3) or above
+app.patch('/assets/:id/notes', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
+  const assetId = parseInt(req.params.id, 10);
+  const notes   = (req.body.notes || '').toString();
+  const updatedBy = req.body.updatedBy || null;
+  q(`INSERT INTO MaintenanceNotes (AssetID, Notes, UpdatedBy) VALUES (?,?,?)
+     ON DUPLICATE KEY UPDATE Notes=VALUES(Notes), UpdatedBy=VALUES(UpdatedBy)`,
+    [assetId, notes, updatedBy], (err) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json({ message: 'Notes saved', notes });
+    });
+});
+
+// Adding/editing assets requires Maintenance clearance (level 3) or above
+app.post('/assets', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
   const { brand, model, serialNumber, category, status, description, dailyCost } = req.body;
   if (!brand || !model || !serialNumber) return res.status(400).json({ message: 'brand, model, serialNumber required' });
   const catName = category || 'Other';
@@ -273,7 +361,7 @@ app.post('/assets', (req, res) => {
   });
 });
 
-app.patch('/assets/:id/cost', (req, res) => {
+app.patch('/assets/:id/cost', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   const cost    = parseFloat(req.body.dailyCost) || 0;
   q('UPDATE HardwareInventory SET DailyCost=? WHERE AssetID=?', [cost, assetId], (err) => {
@@ -282,7 +370,7 @@ app.patch('/assets/:id/cost', (req, res) => {
   });
 });
 
-app.post('/assets/:id/photo', upload.single('photo'), (req, res) => {
+app.post('/assets/:id/photo', requireLevel(CLEARANCE.MAINTENANCE), upload.single('photo'), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   if (!req.file) return res.status(400).json({ message: 'No file provided' });
   const photoPath = req.file.filename;
@@ -298,7 +386,7 @@ app.post('/assets/:id/photo', upload.single('photo'), (req, res) => {
   });
 });
 
-app.delete('/assets/:id/photo', (req, res) => {
+app.delete('/assets/:id/photo', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   q('SELECT PhotoPath FROM HardwareInventory WHERE AssetID=?', [assetId], (err, rows) => {
     if (err || !rows.length) return res.status(404).json({ message: 'Asset not found' });
@@ -312,7 +400,8 @@ app.delete('/assets/:id/photo', (req, res) => {
 });
 
 // ── BORROW / RETURN ───────────────────────────────────────────────────────────
-app.post('/borrow', (req, res) => {
+// Students (level 1) cannot borrow — Employee level or above required
+app.post('/borrow', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
   const { assetIds, borrowedBy, dueDate } = req.body;
   if (!assetIds?.length || !borrowedBy) return res.status(400).json({ message: 'assetIds and borrowedBy required' });
   let done = 0;
@@ -354,8 +443,8 @@ app.get('/return/preview/:logId', (req, res) => {
     });
 });
 
-// Confirm the return
-app.post('/return/:logId', (req, res) => {
+// Confirm the return — Employee level or above required
+app.post('/return/:logId', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
   const logId = parseInt(req.params.logId, 10);
   const { returnedBy } = req.body;
   q('SELECT * FROM BorrowLog WHERE LogID=? AND Status=?', [logId, 'Active'], (err, rows) => {
@@ -411,6 +500,19 @@ app.get('/borrows/history', (_req, res) => {
     });
 });
 
+// ── ACCOUNTS (Admin only — includes plaintext passwords) ─────────────────────
+app.get('/accounts', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
+  q(`SELECT u.UserID, u.username, u.password, u.fullName, u.level, u.role, u.isBanned, u.wallet,
+            e.EmployeeID, e.Department
+     FROM Users u
+     LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID
+     ORDER BY u.username`,
+    [], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
 // ── EMPLOYEES ─────────────────────────────────────────────────────────────────
 app.get('/employees', (_req, res) => {
   q('SELECT EmployeeID,FirstName,LastName,Department,Email FROM Employees', [], (err, results) => {
@@ -429,7 +531,31 @@ app.get('/employees/:id/photo', (req, res) => {
   });
 });
 
-app.post('/employees', (req, res) => {
+// Update an existing employee (e.g. fix a missing/incorrect Department) — Manager level or above
+app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
+  const empId = parseInt(req.params.id, 10);
+  const { firstName, lastName, department, email } = req.body;
+  q('SELECT EmployeeID FROM Employees WHERE EmployeeID=?', [empId], (sErr, rows) => {
+    if (sErr) return res.status(500).json({ message: sErr.message });
+    if (!rows.length) return res.status(404).json({ message: 'Employee not found' });
+    const fields = [];
+    const vals   = [];
+    if (firstName  !== undefined) { fields.push('FirstName=?');  vals.push(firstName); }
+    if (lastName   !== undefined) { fields.push('LastName=?');   vals.push(lastName); }
+    if (department !== undefined) { fields.push('Department=?'); vals.push(department); }
+    if (email      !== undefined) { fields.push('Email=?');      vals.push(email); }
+    if (!fields.length) return res.status(400).json({ message: 'No fields to update' });
+    vals.push(empId);
+    q(`UPDATE Employees SET ${fields.join(', ')}, UpdatedAt=NOW() WHERE EmployeeID=?`, vals, (uErr) => {
+      if (uErr) return res.status(500).json({ message: uErr.message });
+      res.json({ message: 'Employee updated' });
+    });
+  });
+});
+
+// Adding employees requires Manager clearance (level 4) or above.
+// Every new employee automatically gets a linked login account (default clearance: Employee).
+app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   const { firstName, lastName, department, jobTitle, email, photoData, photoMime } = req.body;
   if (!firstName || !lastName) return res.status(400).json({ message: 'firstName and lastName required' });
   let photoBuffer = null;
@@ -441,7 +567,28 @@ app.post('/employees', (req, res) => {
     [firstName, lastName, department||null, email||null, photoBuffer, photoMime||null],
     (err, result) => {
       if (err) { console.error('ADD EMPLOYEE:', err.message); return res.status(500).json({ message: err.message }); }
-      res.status(201).json({ message: 'Employee added', employeeId: result.insertId });
+      const employeeId = result.insertId;
+
+      findFreeUsername(firstName, lastName, (uErr, username) => {
+        if (uErr) {
+          console.error('USERNAME GEN:', uErr.message);
+          return res.status(201).json({ message: 'Employee added, but account creation failed', employeeId });
+        }
+        const password = randomPassword();
+        q('INSERT INTO Users (username,password,fullName,level,role,EmployeeID) VALUES (?,?,?,?,?,?)',
+          [username, password, `${firstName} ${lastName}`, CLEARANCE.EMPLOYEE, 'Employee', employeeId],
+          (aErr) => {
+            if (aErr) {
+              console.error('AUTO ACCOUNT:', aErr.message);
+              return res.status(201).json({ message: 'Employee added, but account creation failed', employeeId });
+            }
+            res.status(201).json({
+              message: 'Employee added and account created',
+              employeeId,
+              account: { username, password, level: CLEARANCE.EMPLOYEE, role: 'Employee' },
+            });
+          });
+      });
     });
 });
 
