@@ -131,6 +131,18 @@ function initTables() {
     UpdatedAt DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`, 'MaintenanceNotes table');
 
+  // ── AccountRequests table — lets a user ask Admin to delete or change their account ──
+  runQ(`CREATE TABLE IF NOT EXISTS AccountRequests (
+    RequestID   INT AUTO_INCREMENT PRIMARY KEY,
+    username    VARCHAR(50) NOT NULL,
+    type        ENUM('delete','change') NOT NULL,
+    details     TEXT,
+    status      ENUM('pending','approved','denied') NOT NULL DEFAULT 'pending',
+    CreatedAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ResolvedAt  DATETIME DEFAULT NULL,
+    ResolvedBy  VARCHAR(50) DEFAULT NULL
+  )`, 'AccountRequests table');
+
   // ── WalletLog table ────────────────────────────────────────────────────────
   runQ(`CREATE TABLE IF NOT EXISTS WalletLog (
     TxID      INT AUTO_INCREMENT PRIMARY KEY,
@@ -500,6 +512,92 @@ app.get('/borrows/history', (_req, res) => {
     });
 });
 
+// ── ACCOUNT REQUESTS ──────────────────────────────────────────────────────────
+// Any logged-in user can ask Admin to delete their account (e.g. leaving the
+// company) or change something about it (e.g. department, name, access level).
+app.post('/account-requests', (req, res) => {
+  const { username, type, details } = req.body;
+  if (!username || !type) return res.status(400).json({ message: 'username and type required' });
+  if (!['delete', 'change'].includes(type)) return res.status(400).json({ message: 'type must be delete or change' });
+  q('SELECT username FROM Users WHERE username=?', [username], (uErr, rows) => {
+    if (uErr) return res.status(500).json({ message: uErr.message });
+    if (!rows.length) return res.status(404).json({ message: 'User not found' });
+    q('INSERT INTO AccountRequests (username,type,details) VALUES (?,?,?)',
+      [username, type, details || ''], (iErr) => {
+        if (iErr) return res.status(500).json({ message: iErr.message });
+        res.status(201).json({ message: 'Request submitted to Admin' });
+      });
+  });
+});
+
+// Any user — check the status of their own requests (used for notifications)
+app.get('/account-requests/mine/:username', (req, res) => {
+  q('SELECT RequestID, type, details, status, CreatedAt, ResolvedAt FROM AccountRequests WHERE username=? ORDER BY CreatedAt DESC',
+    [req.params.username], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// Admin only — view all requests, with the linked employee's info attached
+// (so a "change" request can show a ready-to-edit employee form)
+app.get('/account-requests', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
+  q(`SELECT ar.*, u.EmployeeID, u.level AS AccountLevel, u.role AS AccountRole,
+            e.FirstName, e.LastName, e.Department, e.Email
+     FROM AccountRequests ar
+     LEFT JOIN Users u ON u.username = ar.username
+     LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID
+     ORDER BY (ar.status='pending') DESC, ar.CreatedAt DESC`,
+    [], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// Admin only — approve or deny a request
+app.patch('/account-requests/:id', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const reqId  = parseInt(req.params.id, 10);
+  const { action, resolvedBy } = req.body; // action: 'approve' | 'deny'
+  if (!['approve', 'deny'].includes(action)) return res.status(400).json({ message: 'action must be approve or deny' });
+
+  q('SELECT * FROM AccountRequests WHERE RequestID=?', [reqId], (fErr, rows) => {
+    if (fErr) return res.status(500).json({ message: fErr.message });
+    if (!rows.length) return res.status(404).json({ message: 'Request not found' });
+    const request = rows[0];
+    if (request.status !== 'pending') return res.status(409).json({ message: 'Request already resolved' });
+
+    const finish = () => {
+      q('UPDATE AccountRequests SET status=?, ResolvedAt=NOW(), ResolvedBy=? WHERE RequestID=?',
+        [action === 'approve' ? 'approved' : 'denied', resolvedBy || 'Admin', reqId], (uErr) => {
+          if (uErr) return res.status(500).json({ message: uErr.message });
+          res.json({ message: `Request ${action === 'approve' ? 'approved' : 'denied'}` });
+        });
+    };
+
+    // Approving a delete request removes both the login account AND the linked
+    // employee record — otherwise the person's name keeps showing up in Manage
+    // Employees / Departments even though their account (and job) is gone.
+    // Approving a change request just marks it resolved — the admin edits the
+    // employee directly via the Change button, which opens Manage Employees.
+    if (action === 'approve' && request.type === 'delete') {
+      q('SELECT EmployeeID FROM Users WHERE username=?', [request.username], (lErr, uRows) => {
+        if (lErr) return res.status(500).json({ message: lErr.message });
+        const employeeId = uRows[0]?.EmployeeID || null;
+        q('DELETE FROM Users WHERE username=?', [request.username], (dErr) => {
+          if (dErr) return res.status(500).json({ message: dErr.message });
+          if (employeeId) {
+            q('DELETE FROM Employees WHERE EmployeeID=?', [employeeId], () => finish());
+          } else {
+            finish();
+          }
+        });
+      });
+    } else {
+      finish();
+    }
+  });
+});
+
 // ── ACCOUNTS (Admin only — includes plaintext passwords) ─────────────────────
 app.get('/accounts', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
   q(`SELECT u.UserID, u.username, u.password, u.fullName, u.level, u.role, u.isBanned, u.wallet,
@@ -510,6 +608,20 @@ app.get('/accounts', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
     [], (err, rows) => {
       if (err) return res.status(500).json({ message: err.message });
       res.json(rows);
+    });
+});
+
+// Admin only — one account + its linked employee record, for the Account Requests "Change" modal
+app.get('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  q(`SELECT u.UserID, u.username, u.fullName, u.level, u.role,
+            e.EmployeeID, e.FirstName, e.LastName, e.Department, e.Email
+     FROM Users u
+     LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID
+     WHERE u.username=?`,
+    [req.params.username], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+      res.json(rows[0]);
     });
 });
 
@@ -532,6 +644,22 @@ app.get('/employees/:id/photo', (req, res) => {
 });
 
 // Update an existing employee (e.g. fix a missing/incorrect Department) — Manager level or above
+// Admin only — update a Users row's clearance level/role (used by the Change-request modal)
+app.patch('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const { level, role, fullName } = req.body;
+  const fields = [];
+  const vals   = [];
+  if (level    !== undefined) { fields.push('level=?');    vals.push(Math.min(Math.max(parseInt(level, 10) || CLEARANCE.EMPLOYEE, CLEARANCE.STUDENT), CLEARANCE.ADMIN)); }
+  if (role     !== undefined) { fields.push('role=?');     vals.push(role); }
+  if (fullName !== undefined) { fields.push('fullName=?'); vals.push(fullName); }
+  if (!fields.length) return res.status(400).json({ message: 'No fields to update' });
+  vals.push(req.params.username);
+  q(`UPDATE Users SET ${fields.join(', ')} WHERE username=?`, vals, (err) => {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json({ message: 'Account updated' });
+  });
+});
+
 app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   const empId = parseInt(req.params.id, 10);
   const { firstName, lastName, department, email } = req.body;
@@ -558,6 +686,14 @@ app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
 app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   const { firstName, lastName, department, jobTitle, email, photoData, photoMime } = req.body;
   if (!firstName || !lastName) return res.status(400).json({ message: 'firstName and lastName required' });
+
+  // Clamp requested clearance level to a valid tier, and never let a creator grant
+  // a level higher than their own (prevents a Manager from minting an Admin account).
+  const creatorLevel = parseInt(req.headers['x-user-level'], 10) || CLEARANCE.EMPLOYEE;
+  let requestedLevel = parseInt(req.body.level, 10) || CLEARANCE.EMPLOYEE;
+  requestedLevel = Math.min(Math.max(requestedLevel, CLEARANCE.STUDENT), CLEARANCE.ADMIN);
+  if (requestedLevel > creatorLevel) requestedLevel = creatorLevel;
+
   let photoBuffer = null;
   if (photoData) {
     const base64 = photoData.includes(',') ? photoData.split(',')[1] : photoData;
@@ -575,8 +711,9 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
           return res.status(201).json({ message: 'Employee added, but account creation failed', employeeId });
         }
         const password = randomPassword();
+        const role = ROLE_NAMES[requestedLevel] || 'Employee';
         q('INSERT INTO Users (username,password,fullName,level,role,EmployeeID) VALUES (?,?,?,?,?,?)',
-          [username, password, `${firstName} ${lastName}`, CLEARANCE.EMPLOYEE, 'Employee', employeeId],
+          [username, password, `${firstName} ${lastName}`, requestedLevel, role, employeeId],
           (aErr) => {
             if (aErr) {
               console.error('AUTO ACCOUNT:', aErr.message);
@@ -585,7 +722,7 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
             res.status(201).json({
               message: 'Employee added and account created',
               employeeId,
-              account: { username, password, level: CLEARANCE.EMPLOYEE, role: 'Employee' },
+              account: { username, password, level: requestedLevel, role },
             });
           });
       });

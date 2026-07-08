@@ -42,7 +42,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div>
         <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
       </div>
@@ -58,7 +58,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -81,6 +81,9 @@
           <span class="field-label">Wallet Balance</span>
           <div class="field-value" id="profile-wallet" style="color:#00e5c8;font-size:20px;">₱0.00</div>
         </div>
+        <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="openAccountRequestModal()">
+          <i class="fa-solid fa-envelope"></i> Request Account Change / Deletion
+        </button>
         <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="logout()">
           <i class="fa-solid fa-right-from-bracket"></i> Logout
         </button>
@@ -94,7 +97,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div><div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div><div class="user-label" id="inv-username"></div></div>
     </div>
   </div>
@@ -113,7 +116,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -129,7 +132,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -171,7 +174,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -235,7 +238,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon"><i class="fa-solid fa-cart-shopping"></i></div><span class="cart-page-title">Lending Cart</span></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -267,7 +270,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -289,7 +292,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -308,7 +311,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -345,6 +348,16 @@
             <div class="field-group"><span class="field-label">Job Title</span><input class="field-input" id="new-emp-title" placeholder="Job Title"></div>
           </div>
           <div class="field-group"><span class="field-label">Email</span><input class="field-input" id="new-emp-email" type="email" placeholder="email@company.com"></div>
+          <div class="field-group">
+            <span class="field-label">Account Clearance Level</span>
+            <select class="field-input" id="new-emp-level">
+              <option value="1">Level 1 — Student</option>
+              <option value="2" selected>Level 2 — Employee</option>
+              <option value="3">Level 3 — Maintenance</option>
+              <option value="4">Level 4 — Manager</option>
+              <option value="5">Level 5 — Admin</option>
+            </select>
+          </div>
           <button class="teal-btn" onclick="addEmployee()">Add New Employee</button>
         </div>
       </div>
@@ -357,7 +370,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -383,7 +396,7 @@
       <div id="dept-badge" style="background:#c00;color:#fff;padding:8px 18px;border-radius:30px;font-family:'Orbitron',monospace;font-size:13px;font-weight:700;letter-spacing:1px;">IT Department</div>
     </div>
     <div class="topbar-right">
-      <button class="notif-btn"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -401,7 +414,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -421,7 +434,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -454,12 +467,97 @@
   </div>
 </div>
 
+<!-- ══════ ACCOUNT REQUEST MODAL ══════ -->
+<div id="account-request-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
+  <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:380px;max-width:95vw;">
+    <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:16px;">Request to Admin</div>
+    <div class="field-group" style="margin-bottom:12px;">
+      <span class="field-label">Request Type</span>
+      <select id="acct-req-type" class="field-input">
+        <option value="delete">Delete my account (e.g. leaving the company)</option>
+        <option value="change">Change something on my account</option>
+      </select>
+    </div>
+    <textarea id="acct-req-details" class="field-input" placeholder="Add details (e.g. last day, what needs to change)…"
+      style="width:100%;min-height:80px;margin-bottom:16px;resize:vertical;font-family:'Share Tech Mono',monospace;font-size:12px;"></textarea>
+    <div style="display:flex;gap:10px;">
+      <button class="teal-btn" style="flex:1;" onclick="submitAccountRequest()">Submit Request</button>
+      <button onclick="closeAccountRequestModal()" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px;border-radius:8px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ CHANGE REQUEST MODAL (Admin) ══════ -->
+<div id="change-req-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
+  <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:85vh;overflow-y:auto;">
+    <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:6px;">Change Account</div>
+    <div id="cr-username" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;"></div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="field-group"><span class="field-label">First Name</span><input class="field-input" id="cr-firstname"></div>
+      <div class="field-group"><span class="field-label">Last Name</span><input class="field-input" id="cr-lastname"></div>
+      <div class="field-group">
+        <span class="field-label">Department</span>
+        <select class="field-input" id="cr-dept">
+          <option value="">-- Not Set --</option>
+          <option>IT Department</option><option>Finance Department</option><option>HR Department</option>
+          <option>Entertainment Department</option><option>Research and Development</option>
+          <option>Security Department</option><option>Legal Department</option><option>Marketing Department</option>
+        </select>
+      </div>
+      <div class="field-group"><span class="field-label">Email</span><input class="field-input" id="cr-email" type="email"></div>
+      <div class="field-group">
+        <span class="field-label">Clearance Level</span>
+        <select class="field-input" id="cr-level">
+          <option value="1">Level 1 — Student</option>
+          <option value="2">Level 2 — Employee</option>
+          <option value="3">Level 3 — Maintenance</option>
+          <option value="4">Level 4 — Manager</option>
+          <option value="5">Level 5 — Admin</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="teal-btn" style="flex:1;" onclick="saveChangeRequest()">Save Changes</button>
+      <button onclick="closeChangeRequestModal()" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px;border-radius:8px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ NOTIFICATION PANEL ══════ -->
+<div id="notif-panel" style="display:none;position:fixed;top:60px;right:16px;z-index:1000;width:340px;max-width:92vw;
+     max-height:70vh;overflow-y:auto;background:#0a1a18;border:1px solid var(--teal);border-radius:14px;
+     box-shadow:0 12px 40px rgba(0,0,0,0.6);">
+  <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-family:'Orbitron',monospace;font-size:13px;color:var(--teal);letter-spacing:1px;">
+    🔔 Notifications
+  </div>
+  <div id="notif-panel-list" style="padding:6px;"></div>
+</div>
+
+<!-- ══════ ACCOUNT REQUESTS PAGE (Admin only) ══════ -->
+<div id="page-account-requests" class="page">
+  <div class="topbar">
+    <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <p class="section-title">Account Requests</p>
+    <table class="asset-table">
+      <thead><tr><th>Username</th><th>Type</th><th>Details</th><th>Status</th><th></th></tr></thead>
+      <tbody id="account-requests-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ══════ BAN LIST PAGE ══════ -->
 <div id="page-ban-list" class="page">
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn" onclick="showNotif('No new notifications')"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -493,7 +591,7 @@
   <div class="topbar">
     <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
     <div class="topbar-right">
-      <button class="notif-btn"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
       <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
     </div>
   </div>
@@ -503,8 +601,10 @@
     <div style="display:flex;flex-direction:column;gap:14px;max-width:420px;">
       <div class="field-group"><span class="field-label">Current User</span><div class="field-value" id="settings-username">—</div></div>
       <div class="field-group"><span class="field-label">Access Level</span><div class="field-value" id="settings-level">—</div></div>
-      <div class="field-group"><span class="field-label">Theme</span><div class="field-value">Dark (Teal)</div></div>
-      
+      <div class="field-group">
+        <span class="field-label">Theme</span>
+        <button class="teal-btn" style="width:fit-content;" id="settings-theme-value" onclick="cycleTheme()">Dark (Teal)</button>
+      </div>
       <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="logout()">
         <i class="fa-solid fa-right-from-bracket"></i> Logout
       </button>

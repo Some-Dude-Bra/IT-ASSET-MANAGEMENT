@@ -18,11 +18,46 @@ function authFetch(url, options = {}) {
 // 5 = Admin        — everything
 const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
 
+// ─── THEMES ──────────────────────────────────────────────────────────────────
+const THEMES = {
+  teal:   { label: 'Dark (Teal)',   teal: '#00e5c8', tealDark: '#00b89e', glow: 'rgba(0,229,200,0.25)' },
+  purple: { label: 'Dark (Purple)', teal: '#b088ff', tealDark: '#8a5cf0', glow: 'rgba(176,136,255,0.25)' },
+  blue:   { label: 'Dark (Blue)',   teal: '#4db8ff', tealDark: '#1f8fe0', glow: 'rgba(77,184,255,0.25)' },
+  amber:  { label: 'Dark (Amber)',  teal: '#ffb347', tealDark: '#e08e1f', glow: 'rgba(255,179,71,0.25)' },
+};
+const THEME_ORDER = Object.keys(THEMES);
+let currentThemeName = localStorage.getItem('crispyTheme') || 'teal';
+
+function applyTheme(name) {
+  if (!THEMES[name]) name = 'teal';
+  currentThemeName = name;
+  const t = THEMES[name];
+  const root = document.documentElement.style;
+  root.setProperty('--teal', t.teal);
+  root.setProperty('--teal-dark', t.tealDark);
+  root.setProperty('--teal-glow', t.glow);
+  root.setProperty('--border', t.glow);
+  localStorage.setItem('crispyTheme', name);
+}
+
+function cycleTheme() {
+  const idx  = THEME_ORDER.indexOf(currentThemeName);
+  const next = THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+  applyTheme(next);
+  const el = document.getElementById('settings-theme-value');
+  if (el) el.textContent = THEMES[next].label;
+  showNotif(`🎨 Theme: ${THEMES[next].label}`);
+}
+
+applyTheme(currentThemeName);
+
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser     = null;
 let selectedAssetId = null;
 let cart            = [];
 let notifCount      = 0;
+let currentNotifications = [];
+let notifInterval = null;
 let walletTarget    = null; // for wallet modal
 
 let assets = [
@@ -121,6 +156,7 @@ const PAGE_CLEARANCE = {
   'employees':       CLEARANCE.MANAGER,
   'wallets':         CLEARANCE.MANAGER,
   'accounts':        CLEARANCE.ADMIN,
+  'account-requests':CLEARANCE.ADMIN,
   'ban-list':        CLEARANCE.ADMIN,
 };
 
@@ -147,6 +183,7 @@ function nav(page) {
     'borrow-history':renderBorrowHistory,
     wallets:         renderWallets,
     accounts:        renderAccounts,
+    'account-requests': renderAccountRequests,
     'ban-list':      renderBanList,
   };
   if (renders[page]) renders[page]();
@@ -168,6 +205,9 @@ async function doLogin() {
       currentUser = { username: user.username, fullName: user.fullName, level: user.level, role: user.role, wallet: parseFloat(user.wallet) || 0 };
       await loadAssets();
       await loadEmployees();
+      await refreshNotifications();
+      if (notifInterval) clearInterval(notifInterval);
+      notifInterval = setInterval(refreshNotifications, 60000);
       err.textContent = '';
       document.getElementById('login-user').value = '';
       document.getElementById('login-pass').value = '';
@@ -190,6 +230,9 @@ async function doLogin() {
 
 function logout() {
   currentUser = null; cart = []; notifCount = 0;
+  currentNotifications = [];
+  if (notifInterval) { clearInterval(notifInterval); notifInterval = null; }
+  document.getElementById('notif-panel').style.display = 'none';
   document.getElementById('login-user').value = '';
   document.getElementById('login-pass').value = '';
   document.getElementById('login-error').textContent = '';
@@ -224,6 +267,7 @@ function renderDashboard() {
     { icon: 'fa-solid fa-building',           label: 'Departments',       page: 'departments',     minLevel: CLEARANCE.STUDENT },
     { icon: 'fa-solid fa-wallet',             label: 'User Wallets',      page: 'wallets',         minLevel: CLEARANCE.MANAGER },
     { icon: 'fa-solid fa-key',                label: 'Accounts',          page: 'accounts',        minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-inbox',               label: 'Account Requests',  page: 'account-requests',minLevel: CLEARANCE.ADMIN },
     { icon: 'fa-solid fa-ban',                label: 'Ban List',          page: 'ban-list',        minLevel: CLEARANCE.ADMIN },
     { icon: 'fa-solid fa-gears',              label: 'Settings',          page: 'settings',        minLevel: CLEARANCE.STUDENT },
   ];
@@ -244,8 +288,85 @@ function renderDashboard() {
   updateAllNotifBadges();
 }
 
+let notifications    = []; // { id, icon, text, page, level }
+let notifPollTimer    = null;
+
 function updateAllNotifBadges() {
-  document.querySelectorAll('.notif-badge').forEach(el => { el.textContent = notifCount; });
+  const n = notifications.length;
+  document.querySelectorAll('.notif-badge').forEach(el => {
+    el.textContent = n;
+    el.style.display = n > 0 ? 'inline-block' : 'none';
+  });
+}
+
+// Pulls together everything the current user should be nudged about:
+// - Employee+: their own borrowed assets that are due soon / overdue
+// - Maintenance+: assets still sitting "In Service" waiting on a repair
+// - Admin: pending account-deletion / change requests
+// - Everyone: the resolved status of their own account requests
+async function refreshNotifications() {
+  if (!currentUser) return;
+  const list = [];
+  const lvl  = currentUser.level;
+
+  try {
+    if (lvl >= CLEARANCE.EMPLOYEE) {
+      const res  = await fetch(`${API}/borrows/active`);
+      const rows = await res.json();
+      const mine = rows.filter(r => r.BorrowedBy === currentUser.username);
+      const now  = new Date();
+      mine.forEach(r => {
+        if (!r.DueDate) return;
+        const due = new Date(r.DueDate);
+        const daysLeft = Math.ceil((due - now) / 86400000);
+        if (daysLeft < 0) {
+          list.push({ icon: '⚠', text: `${r.Brand} ${r.Model} is overdue for return (was due ${due.toLocaleDateString()})`, page: 'returns' });
+        } else if (daysLeft <= 2) {
+          list.push({ icon: '⏰', text: `${r.Brand} ${r.Model} return is due ${daysLeft === 0 ? 'today' : 'in ' + daysLeft + ' day(s)'}`, page: 'returns' });
+        }
+      });
+    }
+  } catch {}
+
+  try {
+    if (lvl >= CLEARANCE.MAINTENANCE) {
+      await loadAssets();
+      assets.filter(a => a.status === 'service').forEach(a => {
+        list.push({ icon: '🔧', text: `${a.name} (ID ${a.id}) is still In Service — repair pending`, page: 'maintenance' });
+      });
+    }
+  } catch {}
+
+  try {
+    if (lvl >= CLEARANCE.ADMIN) {
+      const res  = await authFetch(`${API}/account-requests`);
+      const rows = await res.json();
+      rows.filter(r => r.status === 'pending').forEach(r => {
+        list.push({ icon: '📥', text: `${r.username} requested to ${r.type === 'delete' ? 'delete' : 'change'} their account`, page: 'account-requests' });
+      });
+    } else {
+      const res  = await fetch(`${API}/account-requests/mine/${currentUser.username}`);
+      const rows = await res.json();
+      rows.filter(r => r.status !== 'pending').forEach(r => {
+        list.push({ icon: r.status === 'approved' ? '✅' : '❌', text: `Your ${r.type} request was ${r.status}`, page: 'profile' });
+      });
+    }
+  } catch {}
+
+  notifications = list;
+  updateAllNotifBadges();
+}
+
+function toggleNotifPanel() {
+  if (!notifications.length) { showNotif('No new notifications'); return; }
+  const lines = notifications.map(n => `${n.icon} ${n.text}`).join('\n');
+  alert(lines);
+}
+
+function startNotifPolling() {
+  refreshNotifications();
+  clearInterval(notifPollTimer);
+  notifPollTimer = setInterval(refreshNotifications, 60000); // recheck every minute
 }
 
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
@@ -254,38 +375,7 @@ function renderSettings() {
   const lvlLabels = { 1: 'Level 1 — Student', 2: 'Level 2 — Employee', 3: 'Level 3 — Maintenance', 4: 'Level 4 — Manager', 5: 'Level 5 — Admin' };
   document.getElementById('settings-username').textContent = currentUser.fullName;
   document.getElementById('settings-level').textContent    = lvlLabels[currentUser.level] || 'Level ' + currentUser.level;
-  document.getElementById('settings-create-account-section').style.display = currentUser.level >= CLEARANCE.ADMIN ? 'block' : 'none';
-}
-
-async function submitSettingsCreateAccount() {
-  if (!currentUser || currentUser.level < CLEARANCE.ADMIN) { showNotif('⚠ Only admins can create accounts'); return; }
-  const fullName = document.getElementById('sca-fullname').value.trim();
-  const username = document.getElementById('sca-username').value.trim();
-  const password = document.getElementById('sca-password').value;
-  const confirm  = document.getElementById('sca-password2').value;
-  const level    = parseInt(document.getElementById('sca-level').value, 10);
-  const errEl    = document.getElementById('sca-error');
-  if (!fullName)              { errEl.textContent = '⚠ Full name required';           return; }
-  if (!username)              { errEl.textContent = '⚠ Username required';             return; }
-  if (username.includes(' ')) { errEl.textContent = '⚠ No spaces in username';         return; }
-  if (password.length < 4)    { errEl.textContent = '⚠ Password too short (min 4)';   return; }
-  if (password !== confirm)   { errEl.textContent = '⚠ Passwords do not match';        return; }
-  const roles = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
-  try {
-    const res  = await authFetch(`${API}/register`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, fullName, level, role: roles[level] || 'Employee' }),
-      signal: AbortSignal.timeout(4000),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      errEl.textContent = '';
-      ['sca-fullname','sca-username','sca-password','sca-password2'].forEach(id => document.getElementById(id).value = '');
-      showNotif(`✓ Account "${username}" created`);
-    } else {
-      errEl.textContent = '⚠ ' + (data.message || 'Failed');
-    }
-  } catch { errEl.textContent = '⚠ Server offline'; }
+  document.getElementById('settings-theme-value').textContent = THEMES[currentThemeName].label;
 }
 
 // ─── SHRINE ──────────────────────────────────────────────────────────────────
@@ -495,6 +585,7 @@ async function confirmReturn() {
       showNotif(`✓ Returned! Charge: ${peso(data.totalCharge)} (${data.days} day(s)) deducted from ${data.borrowedBy}`);
       await loadAssets();
       renderReturns();
+      refreshNotifications();
     } else {
       showNotif('Return failed: ' + (data.message || 'Unknown'));
     }
@@ -587,6 +678,7 @@ function markAvailable() {
   showNotif(`✓ ${asset?.name} status updated to Available`);
   document.getElementById('repair-detail').style.display = 'none';
   renderMaintenance();
+  refreshNotifications();
 }
 
 // ─── MANAGE ASSETS ───────────────────────────────────────────────────────────
@@ -859,28 +951,167 @@ async function addEmployee() {
   const dept      = document.getElementById('new-emp-dept').value;
   const title     = document.getElementById('new-emp-title').value.trim();
   const email     = document.getElementById('new-emp-email').value.trim();
+  const level     = parseInt(document.getElementById('new-emp-level').value, 10) || CLEARANCE.EMPLOYEE;
   if (!firstName || !lastName) { showNotif('Please enter First and Last name'); return; }
   if (!dept)                   { showNotif('Please select a Department');        return; }
   try {
     const res = await authFetch(`${API}/employees`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ firstName, lastName, department: dept, jobTitle: title, email,
+      body: JSON.stringify({ firstName, lastName, department: dept, jobTitle: title, email, level,
         photoData: empPhotoData, photoMime: empPhotoMime }),
     });
     const data = await res.json();
     if (res.ok) {
       showNotif(`✓ Employee "${firstName} ${lastName}" added!`);
       if (data.account) {
-        alert(`Account created for ${firstName} ${lastName}:\n\nUsername: ${data.account.username}\nPassword: ${data.account.password}\n\nShare these with the employee. You can view this anytime in Accounts (Admin).`);
+        alert(`Account created for ${firstName} ${lastName}:\n\nUsername: ${data.account.username}\nPassword: ${data.account.password}\nClearance: ${data.account.role} (Level ${data.account.level})\n\nShare these with the employee. You can view this anytime in Accounts (Admin).`);
       }
       ['new-emp-firstname','new-emp-lastname','new-emp-title','new-emp-email'].forEach(id => document.getElementById(id).value = '');
-      document.getElementById('new-emp-dept').value = '';
+      document.getElementById('new-emp-dept').value  = '';
+      document.getElementById('new-emp-level').value = '2';
       document.getElementById('new-emp-photo-display').innerHTML = '<i class="fa-solid fa-image"></i>';
       document.getElementById('new-emp-photo-name').textContent  = '';
       empPhotoData = null; empPhotoMime = null;
       await loadEmployees();
       renderEmployees();
     } else { showNotif('Failed: ' + (data.message || 'Unknown')); }
+  } catch { showNotif('Server offline'); }
+}
+
+// ─── CHANGE REQUEST MODAL (Admin edits the requester's info directly) ───────
+let changeReqState = { requestId: null, username: null, employeeId: null };
+
+async function openChangeRequestModal(requestId, username) {
+  try {
+    const res = await authFetch(`${API}/accounts/${encodeURIComponent(username)}`);
+    const acc = await res.json();
+    if (!res.ok) { showNotif('Failed: ' + (acc.message || 'Account not found')); return; }
+    changeReqState = { requestId, username, employeeId: acc.EmployeeID || null };
+    document.getElementById('cr-username').textContent  = `${username} — ${acc.fullName || ''}`;
+    document.getElementById('cr-firstname').value = acc.FirstName || '';
+    document.getElementById('cr-lastname').value  = acc.LastName || '';
+    document.getElementById('cr-dept').value      = acc.Department || '';
+    document.getElementById('cr-email').value     = acc.Email || '';
+    document.getElementById('cr-level').value     = String(acc.level || 2);
+    document.getElementById('change-req-modal').style.display = 'flex';
+  } catch { showNotif('Server offline'); }
+}
+
+function closeChangeRequestModal() {
+  document.getElementById('change-req-modal').style.display = 'none';
+}
+
+async function saveChangeRequest() {
+  const { requestId, username, employeeId } = changeReqState;
+  if (!username) return;
+  const firstName = document.getElementById('cr-firstname').value.trim();
+  const lastName  = document.getElementById('cr-lastname').value.trim();
+  const dept      = document.getElementById('cr-dept').value;
+  const email     = document.getElementById('cr-email').value.trim();
+  const level     = parseInt(document.getElementById('cr-level').value, 10);
+  const roles     = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
+
+  try {
+    if (employeeId) {
+      const empRes = await authFetch(`${API}/employees/${employeeId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName, department: dept || null, email: email || null }),
+      });
+      if (!empRes.ok) { const d = await empRes.json(); showNotif('Failed: ' + (d.message || 'Unknown')); return; }
+    }
+    const accRes = await authFetch(`${API}/accounts/${encodeURIComponent(username)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level, role: roles[level] || 'Employee', fullName: `${firstName} ${lastName}`.trim() || undefined }),
+    });
+    if (!accRes.ok) { const d = await accRes.json(); showNotif('Failed: ' + (d.message || 'Unknown')); return; }
+
+    // Mark the request itself resolved (approved) now that the change is applied
+    const reqRes = await authFetch(`${API}/account-requests/${requestId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'approve', resolvedBy: currentUser.username }),
+    });
+    if (reqRes.ok) {
+      showNotif('✓ Account updated and request resolved');
+      closeChangeRequestModal();
+      renderAccountRequests();
+      refreshNotifications();
+    } else {
+      showNotif('Account updated, but request status failed to update');
+    }
+  } catch { showNotif('Server offline'); }
+}
+
+// ─── ACCOUNT REQUESTS (any user submits; Admin resolves) ────────────────────
+function openAccountRequestModal() {
+  document.getElementById('acct-req-type').value    = 'delete';
+  document.getElementById('acct-req-details').value = '';
+  document.getElementById('account-request-modal').style.display = 'flex';
+}
+function closeAccountRequestModal() {
+  document.getElementById('account-request-modal').style.display = 'none';
+}
+async function submitAccountRequest() {
+  if (!currentUser) return;
+  const type    = document.getElementById('acct-req-type').value;
+  const details = document.getElementById('acct-req-details').value.trim();
+  try {
+    const res  = await authFetch(`${API}/account-requests`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: currentUser.username, type, details }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showNotif('✓ Request submitted to Admin');
+      closeAccountRequestModal();
+    } else { showNotif('Failed: ' + (data.message || 'Unknown')); }
+  } catch { showNotif('Server offline'); }
+}
+
+async function renderAccountRequests() {
+  if (!currentUser || currentUser.level < CLEARANCE.ADMIN) { showNotif('Admin only'); nav('dashboard'); return; }
+  const tbody = document.getElementById('account-requests-tbody');
+  tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
+  try {
+    const res  = await authFetch(`${API}/account-requests`);
+    const rows = await res.json();
+    if (!res.ok) { showNotif('Error: ' + (rows.message || 'Unknown')); return; }
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">No requests.</td></tr>'; return; }
+    tbody.innerHTML = rows.map(r => {
+      const statusColor = r.status === 'pending' ? '#ffcc00' : r.status === 'approved' ? '#00e5c8' : '#ff4444';
+      let actions;
+      if (r.status === 'pending' && r.type === 'change') {
+        actions = `
+        <button class="teal-btn" onclick="openChangeRequestModal(${r.RequestID}, '${r.username}')">Change</button>
+        <button class="add-btn" style="background:#3a0000;border-color:#ff4444;color:#ff8888;" onclick="resolveAccountRequest(${r.RequestID},'deny')">Deny</button>`;
+      } else if (r.status === 'pending') {
+        actions = `
+        <button class="teal-btn" onclick="resolveAccountRequest(${r.RequestID},'approve')">Approve</button>
+        <button class="add-btn" style="background:#3a0000;border-color:#ff4444;color:#ff8888;" onclick="resolveAccountRequest(${r.RequestID},'deny')">Deny</button>`;
+      } else {
+        actions = `<span style="color:var(--muted);font-size:11px;">Resolved by ${r.ResolvedBy || '—'}</span>`;
+      }
+      return `
+      <tr>
+        <td>${r.username}</td>
+        <td style="text-transform:capitalize;">${r.type}</td>
+        <td style="max-width:280px;white-space:pre-wrap;">${r.details || '—'}</td>
+        <td style="color:${statusColor};text-transform:capitalize;">${r.status}</td>
+        <td style="display:flex;gap:6px;">${actions}</td>
+      </tr>`;
+    }).join('');
+  } catch { tbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>'; }
+}
+
+async function resolveAccountRequest(requestId, action) {
+  if (action === 'approve' && !confirm('Are you sure? Approving a delete request permanently removes that login account.')) return;
+  try {
+    const res  = await authFetch(`${API}/account-requests/${requestId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, resolvedBy: currentUser.username }),
+    });
+    const data = await res.json();
+    if (res.ok) { showNotif(`✓ Request ${action === 'approve' ? 'approved' : 'denied'}`); renderAccountRequests(); refreshNotifications(); }
+    else { showNotif('Failed: ' + (data.message || 'Unknown')); }
   } catch { showNotif('Server offline'); }
 }
 
@@ -1050,6 +1281,122 @@ function openDept(name, color) {
   });
   nav('dept-detail');
 }
+
+// ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+// Pulls together everything the current user should be alerted about:
+//  • their own borrowed assets that are due soon / overdue for return
+//  • (Maintenance+) assets sitting in "In Service" awaiting repair
+//  • (Admin) pending account requests
+//  • (everyone else) their own account requests that Admin just resolved
+async function refreshNotifications() {
+  if (!currentUser) { currentNotifications = []; updateAllNotifBadges(); return; }
+  const items = [];
+  const now = new Date();
+
+  // Returns due / overdue — only the ones borrowed by the logged-in user
+  try {
+    const res = await fetch(`${API}/borrows/active`);
+    if (res.ok) {
+      const rows = await res.json();
+      rows.filter(r => r.BorrowedBy === currentUser.username && r.DueDate).forEach(r => {
+        const due = new Date(r.DueDate);
+        const daysLeft = Math.ceil((due - now) / 86400000);
+        if (daysLeft < 0) {
+          items.push({ icon: '⚠', text: `${r.Brand} ${r.Model} is OVERDUE for return (was due ${due.toLocaleDateString()})`, page: 'returns' });
+        } else if (daysLeft <= 2) {
+          items.push({ icon: '⏰', text: `${r.Brand} ${r.Model} return is due ${due.toLocaleDateString()}`, page: 'returns' });
+        }
+      });
+    }
+  } catch { /* server offline — skip silently */ }
+
+  // Assets awaiting repair (Maintenance clearance or above)
+  if (currentUser.level >= CLEARANCE.MAINTENANCE) {
+    const pending = (assets || []).filter(a => a.status === 'service');
+    if (pending.length) {
+      items.push({ icon: '🛠', text: `${pending.length} asset${pending.length > 1 ? 's' : ''} awaiting repair`, page: 'maintenance' });
+    }
+  }
+
+  // Account requests
+  if (currentUser.level >= CLEARANCE.ADMIN) {
+    try {
+      const res = await authFetch(`${API}/account-requests`);
+      if (res.ok) {
+        const rows = await res.json();
+        const pendingCount = rows.filter(r => r.status === 'pending').length;
+        if (pendingCount) items.push({ icon: '📥', text: `${pendingCount} pending account request${pendingCount > 1 ? 's' : ''} to review`, page: 'account-requests' });
+      }
+    } catch { /* server offline */ }
+  } else {
+    try {
+      const res = await fetch(`${API}/account-requests/mine/${encodeURIComponent(currentUser.username)}`);
+      if (res.ok) {
+        const rows = await res.json();
+        const seenKey  = `reqSeen_${currentUser.username}`;
+        const lastSeen = localStorage.getItem(seenKey) || '1970-01-01T00:00:00.000Z';
+        rows.filter(r => r.status !== 'pending' && r.ResolvedAt && r.ResolvedAt > lastSeen).forEach(r => {
+          items.push({
+            icon: r.status === 'approved' ? '✅' : '❌',
+            text: `Your ${r.type} request was ${r.status}`,
+            page: 'profile',
+          });
+        });
+      }
+    } catch { /* server offline */ }
+  }
+
+  currentNotifications = items;
+  updateAllNotifBadges();
+  renderNotifPanel();
+}
+
+function updateAllNotifBadges() {
+  const count = currentNotifications.length;
+  document.querySelectorAll('.notif-badge').forEach(el => {
+    el.textContent = count;
+    el.style.display = count > 0 ? 'flex' : 'none';
+  });
+}
+
+function renderNotifPanel() {
+  const list = document.getElementById('notif-panel-list');
+  if (!list) return;
+  if (!currentNotifications.length) {
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-family:'Share Tech Mono',monospace;font-size:12px;">No new notifications</div>`;
+    return;
+  }
+  list.innerHTML = currentNotifications.map(n => `
+    <div onclick="handleNotifClick('${n.page}')" style="display:flex;gap:10px;align-items:flex-start;padding:12px 10px;border-radius:8px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;color:#e0fff8;" onmouseover="this.style.background='rgba(0,229,200,0.08)'" onmouseout="this.style.background='transparent'">
+      <span style="font-size:16px;">${n.icon}</span>
+      <span style="flex:1;line-height:1.4;">${n.text}</span>
+    </div>
+  `).join('');
+}
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  const isOpen = panel.style.display === 'block';
+  if (isOpen) { panel.style.display = 'none'; return; }
+  refreshNotifications();
+  panel.style.display = 'block';
+  // Mark any account-request updates as "seen" now that the panel was opened
+  if (currentUser && currentUser.level < CLEARANCE.ADMIN) {
+    localStorage.setItem(`reqSeen_${currentUser.username}`, new Date().toISOString());
+  }
+}
+
+function handleNotifClick(page) {
+  document.getElementById('notif-panel').style.display = 'none';
+  if (page) nav(page);
+}
+
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('notif-panel');
+  if (!panel || panel.style.display !== 'block') return;
+  if (panel.contains(e.target) || e.target.closest('.notif-btn')) return;
+  panel.style.display = 'none';
+});
 
 // ─── TOAST ───────────────────────────────────────────────────────────────────
 let toastTimer;
