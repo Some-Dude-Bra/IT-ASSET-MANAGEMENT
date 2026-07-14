@@ -1,14 +1,6 @@
 // ─── DEPENDENCIES ────────────────────────────────────────────────────────────
-const app = express();
 
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-app.use(express.static(__dirname));   // <-- Add this
-
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
+const express = require('express');
 const mysql   = require('mysql2');
 const cors    = require('cors');
 const multer  = require('multer');
@@ -24,7 +16,15 @@ const bcrypt  = require('bcryptjs');
 function isHashed(pw) { return typeof pw === 'string' && /^\$2[aby]?\$/.test(pw); }
 function hashPassword(pw) { return bcrypt.hashSync(String(pw), 10); }
 
+const app = express();
 
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use(express.static(__dirname));   // <-- Add this
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
