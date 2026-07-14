@@ -1,6 +1,6 @@
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-const API = process.env.BASE_URL;
+const API = '';
 
 // ─── AUTH FETCH ──────────────────────────────────────────────────────────────
 // Wraps fetch() and attaches the logged-in user's clearance level so the server
