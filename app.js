@@ -1,5 +1,5 @@
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const API = 'http://localhost:20240';
+const API = process.env.BASE_URL;
 
 // ─── AUTH FETCH ──────────────────────────────────────────────────────────────
 // Wraps fetch() and attaches the logged-in user's clearance level so the server
