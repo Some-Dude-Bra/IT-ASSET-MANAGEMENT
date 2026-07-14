@@ -24,7 +24,7 @@ const bcrypt  = require('bcryptjs');
 function isHashed(pw) { return typeof pw === 'string' && /^\$2[aby]?\$/.test(pw); }
 function hashPassword(pw) { return bcrypt.hashSync(String(pw), 10); }
 
-const app = express();
+
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
