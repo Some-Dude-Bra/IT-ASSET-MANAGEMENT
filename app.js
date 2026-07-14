@@ -169,7 +169,7 @@ function nav(page) {
     showNotif('⚠ You do not have clearance to access that page');
     page = 'dashboard';
   }
-  if (page !== 'accounts') { resetPasswordTarget = null; }
+  if (page !== 'accounts' && passwordsRevealed) { passwordsRevealed = false; revealedPasswords = {}; }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   window.scrollTo(0, 0);
@@ -697,21 +697,11 @@ async function saveRepairNotes() {
 async function markAvailable() {
   if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
   const asset = assets.find(a => a.id === selectedAssetId);
-  if (!asset) return;
-  try {
-    const res  = await authFetch(`${API}/assets/${asset.id}/status`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'available' }),
-    });
-    const data = await res.json();
-    if (!res.ok) { showNotif('Failed: ' + (data.message || 'Unknown')); return; }
-    asset.status = 'available';
-    showNotif(`✓ ${asset.name} status updated to Available`);
-    document.getElementById('repair-detail').style.display = 'none';
-    await loadAssets();
-    renderMaintenance();
-    refreshNotifications();
-  } catch { showNotif('Server offline — status not saved'); }
+  if (asset) { asset.status = 'available'; asset.borrowedBy = null; asset.returnDate = null; }
+  showNotif(`✓ ${asset?.name} status updated to Available`);
+  document.getElementById('repair-detail').style.display = 'none';
+  renderMaintenance();
+  refreshNotifications();
 }
 
 // ─── MANAGE ASSETS ───────────────────────────────────────────────────────────
@@ -1085,12 +1075,11 @@ async function saveChangeRequest() {
       });
       if (!empRes.ok) { const d = await empRes.json(); showNotif('Failed: ' + (d.message || 'Unknown')); return; }
     }
-    const accRes  = await authFetch(`${API}/accounts/${encodeURIComponent(username)}`, {
+    const accRes = await authFetch(`${API}/accounts/${encodeURIComponent(username)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level, role: roles[level] || 'Employee', fullName: `${firstName} ${lastName}`.trim() || undefined }),
     });
-    const accData = await accRes.json();
-    if (!accRes.ok) { showNotif('Failed: ' + (accData.message || 'Unknown')); return; }
+    if (!accRes.ok) { const d = await accRes.json(); showNotif('Failed: ' + (d.message || 'Unknown')); return; }
 
     // Mark the request itself resolved (approved) now that the change is applied
     const reqRes = await authFetch(`${API}/account-requests/${requestId}`, {
@@ -1098,9 +1087,7 @@ async function saveChangeRequest() {
       body: JSON.stringify({ action: 'approve', resolvedBy: currentUser.username }),
     });
     if (reqRes.ok) {
-      showNotif(accData.usernameChanged
-        ? `✓ Account updated — username changed to "${accData.username}"`
-        : '✓ Account updated and request resolved');
+      showNotif('✓ Account updated and request resolved');
       closeChangeRequestModal();
       renderAccountRequests();
       refreshNotifications();
@@ -1184,13 +1171,15 @@ async function resolveAccountRequest(requestId, action) {
   } catch { showNotif('Server offline'); }
 }
 
-// ─── ACCOUNTS (admin only — passwords are hashed, never shown) ──────────────
+// ─── ACCOUNTS (admin only — shows plaintext passwords) ───────────────────────
 let accountsData     = [];
-let resetPasswordTarget = null; // username currently pending a PIN-gated reset
+let passwordsRevealed = false;
+let revealedPasswords = {};
 
 async function renderAccounts() {
   if (!currentUser || currentUser.level < CLEARANCE.ADMIN) { showNotif('Admin only'); nav('dashboard'); return; }
-  resetPasswordTarget = null;
+  passwordsRevealed = false;
+  revealedPasswords = {};
   const tbody = document.getElementById('accounts-tbody');
   tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
   try {
@@ -1204,24 +1193,32 @@ async function renderAccounts() {
 
 function renderAccountsTable() {
   const tbody = document.getElementById('accounts-tbody');
-  if (!accountsData.length) { tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);padding:20px;">No accounts found.</td></tr>'; return; }
-  tbody.innerHTML = accountsData.map(u => `
+  const btn   = document.getElementById('accounts-unlock-btn');
+  if (btn) btn.textContent = passwordsRevealed ? '🔒 Hide Passwords' : '🔓 Unlock Passwords';
+  if (!accountsData.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">No accounts found.</td></tr>'; return; }
+  tbody.innerHTML = accountsData.map(u => {
+    const pwCell = passwordsRevealed
+      ? `<span style="color:#ffcc00;">${revealedPasswords[u.username] ?? '—'}</span>`
+      : `<span style="color:var(--muted);letter-spacing:2px;">••••••••</span>`;
+    return `
       <tr ${u.isBanned ? 'style="background:rgba(255,68,68,0.05);"' : ''}>
         <td>${u.username}${u.isBanned ? ' <span style="color:#ff8888;">🚫</span>' : ''}</td>
-        <td style="font-family:'Share Tech Mono',monospace;"><span style="color:var(--muted);letter-spacing:2px;">•••••••• (hashed)</span></td>
+        <td style="font-family:'Share Tech Mono',monospace;">${pwCell}</td>
         <td>${u.fullName}</td>
         <td>${u.role} (Lvl ${u.level})</td>
         <td>${u.Department || '—'}</td>
         <td style="color:#00e5c8;">${peso(u.wallet)}</td>
-        <td><button class="teal-btn" onclick="startResetPassword('${u.username}')">Reset</button></td>
-      </tr>`).join('');
+      </tr>`;
+  }).join('');
 }
 
-// Kicks off a PIN-gated password reset for one account. Passwords are hashed
-// server-side, so there's nothing to "reveal" — this issues a fresh one-time
-// password instead, same as when a new employee account is auto-created.
-function startResetPassword(username) {
-  resetPasswordTarget = username;
+function toggleAccountsPasswords() {
+  if (passwordsRevealed) {
+    passwordsRevealed = false;
+    revealedPasswords = {};
+    renderAccountsTable();
+    return;
+  }
   const me = accountsData.find(u => u.username === currentUser.username);
   if (me && !me.hasPin) {
     openSetPinModal();
@@ -1263,12 +1260,10 @@ async function submitSetPin() {
   } catch { errEl.textContent = '⚠ Server offline'; }
 }
 
-// ─── VERIFY PIN MODAL (to reset a password) ─────────────────────────────────
+// ─── VERIFY PIN MODAL (to reveal passwords) ─────────────────────────────────
 function openVerifyPinModal() {
   document.getElementById('verify-pin-input').value = '';
   document.getElementById('verify-pin-error').textContent = '';
-  const targetEl = document.getElementById('verify-pin-target');
-  if (targetEl) targetEl.textContent = resetPasswordTarget ? `Resetting password for: ${resetPasswordTarget}` : '';
   document.getElementById('verify-pin-modal').style.display = 'flex';
 }
 function closeVerifyPinModal() { document.getElementById('verify-pin-modal').style.display = 'none'; }
@@ -1276,18 +1271,19 @@ function closeVerifyPinModal() { document.getElementById('verify-pin-modal').sty
 async function submitVerifyPin() {
   const pin   = document.getElementById('verify-pin-input').value.trim();
   const errEl = document.getElementById('verify-pin-error');
-  if (!pin)               { errEl.textContent = '⚠ Enter your PIN'; return; }
-  if (!resetPasswordTarget) { errEl.textContent = '⚠ No account selected'; return; }
+  if (!pin) { errEl.textContent = '⚠ Enter your PIN'; return; }
   try {
-    const res  = await authFetch(`${API}/accounts/reset-password`, {
+    const res  = await authFetch(`${API}/accounts/reveal`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminUsername: currentUser.username, username: resetPasswordTarget, pin }),
+      body: JSON.stringify({ username: currentUser.username, pin }),
     });
     const data = await res.json();
     if (res.ok) {
+      revealedPasswords = data.passwords;
+      passwordsRevealed  = true;
       closeVerifyPinModal();
-      alert(`New password for ${data.username}:\n\n${data.password}\n\nShare this with them — it won't be shown again.`);
-      resetPasswordTarget = null;
+      renderAccountsTable();
+      showNotif('🔓 Passwords unlocked');
     } else { errEl.textContent = '⚠ ' + (data.message || 'Incorrect PIN'); }
   } catch { errEl.textContent = '⚠ Server offline'; }
 }

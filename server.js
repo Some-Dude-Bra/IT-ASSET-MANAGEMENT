@@ -6,14 +6,6 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 const crypto  = require('crypto');
-const bcrypt  = require('bcryptjs');
-
-// ─── PASSWORD HASHING HELPERS ─────────────────────────────────────────────────
-// Passwords are never stored or compared as plaintext. bcrypt hashes always
-// start with "$2" (e.g. "$2a$10$..."), so isHashed() lets us tell a hash apart
-// from a legacy plaintext password left over from before hashing was added.
-function isHashed(pw) { return typeof pw === 'string' && /^\$2[aby]?\$/.test(pw); }
-function hashPassword(pw) { return bcrypt.hashSync(String(pw), 10); }
 
 const app = express();
 
@@ -705,8 +697,8 @@ app.delete('/employees/:id', requireLevel(CLEARANCE.ADMIN), (req, res) => {
 
 // ── ACCOUNTS (Admin only — includes plaintext passwords) ─────────────────────
 app.get('/accounts', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
-  // Passwords are never returned here — they're hashed and can only be reset
-  // (not revealed) via the PIN-gated POST /accounts/reset-password.
+  // Passwords are withheld here by design — the frontend must call
+  // POST /accounts/reveal with a verified PIN to actually see them.
   q(`SELECT u.UserID, u.username, u.fullName, u.level, u.role, u.isBanned, u.wallet,
             e.EmployeeID, e.Department,
             (u.PinHash IS NOT NULL) AS hasPin
@@ -744,25 +736,23 @@ app.post('/accounts/set-pin', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   });
 });
 
-// Passwords are hashed (bcrypt) and cannot be decrypted or displayed, so instead
-// of revealing them, a PIN-gated Admin action resets one to a fresh random
-// password and returns it once — same pattern as the auto-created-account flow.
-app.post('/accounts/reset-password', requireLevel(CLEARANCE.ADMIN), (req, res) => {
-  const { adminUsername, username, pin } = req.body;
-  if (!adminUsername || !username || !pin) return res.status(400).json({ message: 'adminUsername, username and pin required' });
+// Reveal plaintext passwords — Admin only, and only with a correct PIN.
+app.post('/accounts/reveal', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const { username, pin } = req.body;
+  if (!username || !pin) return res.status(400).json({ message: 'username and pin required' });
 
-  q('SELECT PinHash, PinSalt FROM Users WHERE username=?', [adminUsername], (sErr, rows) => {
+  q('SELECT PinHash, PinSalt FROM Users WHERE username=?', [username], (sErr, rows) => {
     if (sErr) return res.status(500).json({ message: sErr.message });
     if (!rows.length) return res.status(404).json({ message: 'Account not found' });
     const admin = rows[0];
     if (!admin.PinHash) return res.status(400).json({ message: 'No PIN set yet — set one first' });
     if (hashPin(pin, admin.PinSalt) !== admin.PinHash) return res.status(401).json({ message: 'Incorrect PIN' });
 
-    const newPassword = randomPassword();
-    q('UPDATE Users SET password=? WHERE username=?', [hashPassword(newPassword), username], (uErr, result) => {
-      if (uErr) return res.status(500).json({ message: uErr.message });
-      if (!result.affectedRows) return res.status(404).json({ message: 'User not found' });
-      res.json({ username, password: newPassword });
+    q(`SELECT username, password FROM Users ORDER BY username`, [], (pErr, pwRows) => {
+      if (pErr) return res.status(500).json({ message: pErr.message });
+      const map = {};
+      pwRows.forEach(r => { map[r.username] = r.password; });
+      res.json({ passwords: map });
     });
   });
 });
@@ -802,7 +792,6 @@ app.get('/employees/:id/photo', (req, res) => {
 // Update an existing employee (e.g. fix a missing/incorrect Department) — Manager level or above
 // Admin only — update a Users row's clearance level/role (used by the Change-request modal)
 app.patch('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
-  const oldUsername = req.params.username;
   const { level, role, fullName } = req.body;
   const fields = [];
   const vals   = [];
@@ -810,63 +799,11 @@ app.patch('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   if (role     !== undefined) { fields.push('role=?');     vals.push(role); }
   if (fullName !== undefined) { fields.push('fullName=?'); vals.push(fullName); }
   if (!fields.length) return res.status(400).json({ message: 'No fields to update' });
-
-  const applyFieldUpdate = (username, cb) => {
-    const v = [...vals, username];
-    q(`UPDATE Users SET ${fields.join(', ')} WHERE username=?`, v, cb);
-  };
-
-  // When the person's name changes, their username should change to match it
-  // (e.g. "Jane Doe" -> jane.doe), same convention new accounts are auto-named
-  // with. Everywhere else in the DB that stores the username by value (not a
-  // real foreign key) gets renamed along with it so history stays linked.
-  if (fullName !== undefined) {
-    q('SELECT fullName FROM Users WHERE username=?', [oldUsername], (sErr, rows) => {
-      if (sErr) return res.status(500).json({ message: sErr.message });
-      if (!rows.length) return res.status(404).json({ message: 'Account not found' });
-      const nameChanged = fullName.trim() && fullName.trim() !== rows[0].fullName;
-      if (!nameChanged) return applyFieldUpdate(oldUsername, finishPlain);
-
-      const [first, ...rest] = fullName.trim().split(/\s+/);
-      const last = rest.join(' ') || first;
-      const base = `${slugify(first)}.${slugify(last)}`;
-      q('SELECT username FROM Users WHERE username LIKE ? AND username<>?', [`${base}%`, oldUsername], (uErr, taken) => {
-        if (uErr) return res.status(500).json({ message: uErr.message });
-        const takenSet = new Set(taken.map(r => r.username));
-        let newUsername = base;
-        let n = 2;
-        while (takenSet.has(newUsername)) newUsername = `${base}${n++}`;
-
-        if (newUsername === oldUsername) return applyFieldUpdate(oldUsername, finishPlain);
-
-        applyFieldUpdate(oldUsername, (fErr) => {
-          if (fErr) return res.status(500).json({ message: fErr.message });
-          q('UPDATE Users SET username=? WHERE username=?', [newUsername, oldUsername], (rErr) => {
-            if (rErr) return res.status(500).json({ message: rErr.message });
-            // Cascade the rename across the other tables that reference the
-            // username by value, so borrow/wallet/request history stays intact.
-            const renames = [
-              ['UPDATE BorrowLog SET BorrowedBy=? WHERE BorrowedBy=?', [newUsername, oldUsername]],
-              ['UPDATE BorrowLog SET ReturnedBy=? WHERE ReturnedBy=?', [newUsername, oldUsername]],
-              ['UPDATE WalletLog SET Username=? WHERE Username=?',    [newUsername, oldUsername]],
-              ['UPDATE AccountRequests SET username=? WHERE username=?', [newUsername, oldUsername]],
-              ['UPDATE Users SET bannedBy=? WHERE bannedBy=?',        [newUsername, oldUsername]],
-              ['UPDATE MaintenanceNotes SET UpdatedBy=? WHERE UpdatedBy=?', [newUsername, oldUsername]],
-            ];
-            renames.forEach(([sql, params]) => db.query(sql, params, () => {}));
-            res.json({ message: 'Account updated', username: newUsername, usernameChanged: true });
-          });
-        });
-      });
-    });
-  } else {
-    applyFieldUpdate(oldUsername, finishPlain);
-  }
-
-  function finishPlain(err) {
+  vals.push(req.params.username);
+  q(`UPDATE Users SET ${fields.join(', ')} WHERE username=?`, vals, (err) => {
     if (err) return res.status(500).json({ message: err.message });
-    res.json({ message: 'Account updated', username: oldUsername, usernameChanged: false });
-  }
+    res.json({ message: 'Account updated' });
+  });
 });
 
 app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
@@ -922,7 +859,7 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
         const password = randomPassword();
         const role = ROLE_NAMES[requestedLevel] || 'Employee';
         q('INSERT INTO Users (username,password,fullName,level,role,EmployeeID) VALUES (?,?,?,?,?,?)',
-          [username, hashPassword(password), `${firstName} ${lastName}`, requestedLevel, role, employeeId],
+          [username, password, `${firstName} ${lastName}`, requestedLevel, role, employeeId],
           (aErr) => {
             if (aErr) {
               console.error('AUTO ACCOUNT:', aErr.message);
@@ -946,4 +883,8 @@ app.use((err, req, res, next) => {
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────
-app.listen(3000, () => console.log('Server running on http://localhost:3000'));
+const PORT = process.env.PORT || 20240;
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

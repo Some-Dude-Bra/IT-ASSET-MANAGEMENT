@@ -453,9 +453,7 @@
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
     <p class="section-title">Accounts</p>
     
-    <p style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:16px;">
-      Passwords are hashed and cannot be displayed. Use Reset to issue a new one-time password (PIN required).
-    </p>
+    <button class="teal-btn" id="accounts-unlock-btn" style="margin-bottom:16px;width:fit-content;" onclick="toggleAccountsPasswords()">🔓 Unlock Passwords</button>
     <table class="asset-table">
       <thead><tr><th>Username</th><th>Password</th><th>Full Name</th><th>Role</th><th>Department</th><th>Wallet</th><th></th></tr></thead>
       <tbody id="accounts-tbody"></tbody>
@@ -504,7 +502,7 @@
   <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:340px;max-width:95vw;">
     <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:6px;">Set Security PIN</div>
     <p style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:16px;">
-      This PIN protects resetting other accounts' passwords. 4-8 digits.
+      This PIN protects viewing other accounts' passwords. 4-8 digits.
     </p>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div class="field-group" id="set-pin-current-row" style="display:none;">
@@ -532,11 +530,10 @@
 <div id="verify-pin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
   <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:320px;max-width:95vw;">
     <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:16px;">🔒 Enter Security PIN</div>
-    <div id="verify-pin-target" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:8px;"></div>
     <input class="field-input" id="verify-pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="PIN" style="width:100%;margin-bottom:8px;" onkeydown="if(event.key==='Enter') submitVerifyPin()">
     <div id="verify-pin-error" style="color:#ff4444;font-size:11px;min-height:16px;font-family:'Share Tech Mono',monospace;margin-bottom:8px;"></div>
     <div style="display:flex;gap:10px;">
-      <button class="teal-btn" style="flex:1;" onclick="submitVerifyPin()">Reset Password</button>
+      <button class="teal-btn" style="flex:1;" onclick="submitVerifyPin()">Unlock</button>
       <button onclick="closeVerifyPinModal()" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px;border-radius:8px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;">Cancel</button>
     </div>
   </div>
