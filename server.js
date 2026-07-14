@@ -5,6 +5,15 @@ const cors    = require('cors');
 const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
+const crypto  = require('crypto');
+const bcrypt  = require('bcryptjs');
+
+// ─── PASSWORD HASHING HELPERS ─────────────────────────────────────────────────
+// Passwords are never stored or compared as plaintext. bcrypt hashes always
+// start with "$2" (e.g. "$2a$10$..."), so isHashed() lets us tell a hash apart
+// from a legacy plaintext password left over from before hashing was added.
+function isHashed(pw) { return typeof pw === 'string' && /^\$2[aby]?\$/.test(pw); }
+function hashPassword(pw) { return bcrypt.hashSync(String(pw), 10); }
 
 const app = express();
 
@@ -78,22 +87,49 @@ function initTables() {
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS bannedBy  VARCHAR(50)   DEFAULT NULL',
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS wallet    DECIMAL(10,2) DEFAULT 0.00',
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS EmployeeID INT DEFAULT NULL',
+     'ALTER TABLE Users ADD COLUMN IF NOT EXISTS PinHash VARCHAR(64) DEFAULT NULL',
+     'ALTER TABLE Users ADD COLUMN IF NOT EXISTS PinSalt VARCHAR(32) DEFAULT NULL',
     ].forEach(sql => db.query(sql, () => {}));
-    // Seed default users — clearance scale: 1=Student, 2=Employee, 3=Maintenance, 4=Manager, 5=Admin
+    // Seed default demo users — clearance scale: 1=Student, 2=Employee, 3=Maintenance, 4=Manager, 5=Admin
+    // Password for every seeded account is "password" (hashed below) — this is a demo/class project.
+    const DEMO_USERS = [
+      ['tony.stark',  'Tony Stark',  5, 'Admin'],
+      ['bruce.wayne', 'Bruce Wayne', 4, 'Manager'],
+      ['tim.drake',   'Tim Drake',   2, 'Employee'],
+      ['jason.todd',  'Jason Todd',  3, 'Maintenance'],
+    ];
+    // Insert any demo account that's missing — this runs every startup, not just
+    // on a brand-new DB, so upgrading an existing install (which already had its
+    // own users) still ends up with working tony.stark / bruce.wayne / tim.drake
+    // / jason.todd logins instead of "Invalid credentials".
+    db.query('SELECT username FROM Users WHERE username IN (?)', [DEMO_USERS.map(u => u[0])], (dErr, existingRows) => {
+      if (dErr) return console.error('Demo user check:', dErr.message);
+      const existing = new Set(existingRows.map(r => r.username));
+      const missing  = DEMO_USERS.filter(u => !existing.has(u[0]));
+      if (missing.length) {
+        const demoPw = hashPassword('password');
+        db.query('INSERT INTO Users (username,password,fullName,level,role) VALUES ?',
+          [missing.map(([username, fullName, level, role]) => [username, demoPw, fullName, level, role])],
+          iErr => { if (iErr) console.error('Demo seed error:', iErr.message); else console.log(`✓ Seeded demo users: ${missing.map(u=>u[0]).join(', ')}`); });
+      }
+    });
     db.query('SELECT COUNT(*) AS cnt FROM Users', (e, rows) => {
-      if (!e && rows[0].cnt === 0) {
-        db.query('INSERT INTO Users (username,password,fullName,level,role) VALUES ?', [[
-          ['peter',    'password','Peter Parker',    5,'Admin'],
-          ['caroline', 'password','Caroline Reyes',  2,'Employee'],
-          ['sebastian','password','Sebastian Cruz',  2,'Employee'],
-          ['rheniel',  'password','Rheniel Santos',  2,'Employee'],
-        ]], iErr => { if (iErr) console.error('Seed error:',iErr.message); else console.log('✓ Default users seeded'); });
-      } else if (!e) {
+      if (!e && rows[0].cnt > 0) {
         // One-time migration for installs seeded under the OLD scheme, where
         // level=1 + role='Admin' meant "Admin". Under the new 5-tier scale,
         // level 1 means "Student", so bump any such accounts up to level 5.
         db.query("UPDATE Users SET level=5 WHERE role='Admin' AND level=1",
           mErr => { if (mErr) console.error('Admin level migration:', mErr.message); });
+
+        // One-time migration: hash any leftover plaintext passwords from before
+        // bcrypt was added, so nothing in the DB stays readable as plaintext.
+        db.query('SELECT UserID, password FROM Users', (pErr, pwRows) => {
+          if (pErr) return console.error('Password migration lookup:', pErr.message);
+          pwRows.filter(r => !isHashed(r.password)).forEach(r => {
+            db.query('UPDATE Users SET password=? WHERE UserID=?', [hashPassword(r.password), r.UserID],
+              uErr => { if (uErr) console.error('Password migration:', uErr.message); });
+          });
+        });
       }
     });
   });
@@ -130,6 +166,18 @@ function initTables() {
     UpdatedBy VARCHAR(50) DEFAULT NULL,
     UpdatedAt DATETIME    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`, 'MaintenanceNotes table');
+
+  // ── AccountRequests table — lets a user ask Admin to delete or change their account ──
+  runQ(`CREATE TABLE IF NOT EXISTS AccountRequests (
+    RequestID   INT AUTO_INCREMENT PRIMARY KEY,
+    username    VARCHAR(50) NOT NULL,
+    type        ENUM('delete','change') NOT NULL,
+    details     TEXT,
+    status      ENUM('pending','approved','denied') NOT NULL DEFAULT 'pending',
+    CreatedAt   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ResolvedAt  DATETIME DEFAULT NULL,
+    ResolvedBy  VARCHAR(50) DEFAULT NULL
+  )`, 'AccountRequests table');
 
   // ── WalletLog table ────────────────────────────────────────────────────────
   runQ(`CREATE TABLE IF NOT EXISTS WalletLog (
@@ -186,6 +234,12 @@ function findFreeUsername(firstName, lastName, cb) {
   });
 }
 
+// ─── SECURITY PIN HELPERS (for gating plaintext password viewing) ───────────
+function hashPin(pin, salt) {
+  return crypto.createHash('sha256').update(String(pin) + salt).digest('hex');
+}
+function newSalt() { return crypto.randomBytes(16).toString('hex'); }
+
 // ─── ROUTES ──────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => res.send('Crispy Tech Lending Server is Running!'));
 
@@ -193,12 +247,15 @@ app.get('/', (_req, res) => res.send('Crispy Tech Lending Server is Running!'));
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ message: 'Username and password required' });
-  q('SELECT username,fullName,level,role,isBanned,banReason,bannedAt,wallet FROM Users WHERE username=? AND password=?',
-    [username, password], (err, rows) => {
+  q('SELECT username,password,fullName,level,role,isBanned,banReason,bannedAt,wallet FROM Users WHERE username=?',
+    [username], (err, rows) => {
       if (err) { console.error('LOGIN:', err.message); return res.status(500).json({ message: err.message }); }
       if (!rows.length) return res.status(401).json({ message: 'Invalid credentials' });
       const u = rows[0];
+      const ok = isHashed(u.password) ? bcrypt.compareSync(password, u.password) : password === u.password;
+      if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
       if (u.isBanned) return res.status(403).json({ message:'banned', banReason: u.banReason||'No reason given', bannedAt: u.bannedAt });
+      delete u.password;
       res.json(u);
     });
 });
@@ -212,7 +269,7 @@ app.post('/register', requireLevel(CLEARANCE.ADMIN), (req, res) => {
     if (cErr) return res.status(500).json({ message: cErr.message });
     if (rows.length) return res.status(409).json({ message: 'Username already taken' });
     q('INSERT INTO Users (username,password,fullName,level,role) VALUES (?,?,?,?,?)',
-      [username, password, fullName, lvl, role || ROLE_NAMES[lvl] || 'Employee'], (iErr) => {
+      [username, hashPassword(password), fullName, lvl, role || ROLE_NAMES[lvl] || 'Employee'], (iErr) => {
         if (iErr) return res.status(500).json({ message: iErr.message });
         res.status(201).json({ message: 'Account created', username });
       });
@@ -370,6 +427,23 @@ app.patch('/assets/:id/cost', requireLevel(CLEARANCE.MAINTENANCE), (req, res) =>
   });
 });
 
+// Update an asset's status (e.g. Maintenance marking a repaired device back to
+// Available). Maps the frontend's three canonical keys to a stored Status
+// string. This is the piece that was previously missing — the frontend only
+// updated its own in-memory copy, so the old status came right back on the
+// next reload from the DB.
+const STATUS_MAP = { available: 'Available', unavailable: 'Unavailable', service: 'In Service' };
+app.patch('/assets/:id/status', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
+  const assetId = parseInt(req.params.id, 10);
+  const status  = STATUS_MAP[(req.body.status || '').toLowerCase()];
+  if (!status) return res.status(400).json({ message: 'status must be one of: available, unavailable, service' });
+  q('UPDATE HardwareInventory SET Status=?, UpdatedAt=NOW() WHERE AssetID=?', [status, assetId], (err, result) => {
+    if (err) return res.status(500).json({ message: err.message });
+    if (!result.affectedRows) return res.status(404).json({ message: 'Asset not found' });
+    res.json({ message: 'Status updated', status });
+  });
+});
+
 app.post('/assets/:id/photo', requireLevel(CLEARANCE.MAINTENANCE), upload.single('photo'), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   if (!req.file) return res.status(400).json({ message: 'No file provided' });
@@ -423,13 +497,23 @@ app.post('/borrow', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
   });
 });
 
-// Preview return charge before confirming
-app.get('/return/preview/:logId', (req, res) => {
+// Only the person who borrowed an item may return it — no clearance level,
+// including Admin, gets to return someone else's item.
+function canActOnBorrow(req, borrowedBy) {
+  const username = req.headers['x-username'];
+  return !!username && username === borrowedBy;
+}
+
+// Preview return charge before confirming — same ownership rule as the actual return
+app.get('/return/preview/:logId', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
   const logId = parseInt(req.params.logId, 10);
   q('SELECT bl.*, hi.Brand, hi.Model FROM BorrowLog bl JOIN HardwareInventory hi ON bl.AssetID=hi.AssetID WHERE bl.LogID=? AND bl.Status=?',
     [logId, 'Active'], (err, rows) => {
       if (err || !rows.length) return res.status(404).json({ message: 'Active borrow record not found' });
-      const log       = rows[0];
+      const log = rows[0];
+      if (!canActOnBorrow(req, log.BorrowedBy)) {
+        return res.status(403).json({ message: 'You can only return items you borrowed yourself' });
+      }
       const borrowedAt = new Date(log.BorrowedAt);
       const now        = new Date();
       const days       = Math.max(1, Math.ceil((now - borrowedAt) / (1000 * 60 * 60 * 24)));
@@ -443,13 +527,17 @@ app.get('/return/preview/:logId', (req, res) => {
     });
 });
 
-// Confirm the return — Employee level or above required
+// Confirm the return — Employee level or above required, and only for the
+// item you personally borrowed. No clearance level can return on someone else's behalf.
 app.post('/return/:logId', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
   const logId = parseInt(req.params.logId, 10);
   const { returnedBy } = req.body;
   q('SELECT * FROM BorrowLog WHERE LogID=? AND Status=?', [logId, 'Active'], (err, rows) => {
     if (err || !rows.length) return res.status(404).json({ message: 'Active borrow record not found' });
     const log        = rows[0];
+    if (!canActOnBorrow(req, log.BorrowedBy)) {
+      return res.status(403).json({ message: 'You can only return items you borrowed yourself' });
+    }
     const borrowedAt = new Date(log.BorrowedAt);
     const now        = new Date();
     const days       = Math.max(1, Math.ceil((now - borrowedAt) / (1000 * 60 * 60 * 24)));
@@ -500,16 +588,196 @@ app.get('/borrows/history', (_req, res) => {
     });
 });
 
+// ── ACCOUNT REQUESTS ──────────────────────────────────────────────────────────
+// Any logged-in user can ask Admin to delete their account (e.g. leaving the
+// company) or change something about it (e.g. department, name, access level).
+app.post('/account-requests', (req, res) => {
+  const { username, type, details } = req.body;
+  if (!username || !type) return res.status(400).json({ message: 'username and type required' });
+  if (!['delete', 'change'].includes(type)) return res.status(400).json({ message: 'type must be delete or change' });
+  q('SELECT username FROM Users WHERE username=?', [username], (uErr, rows) => {
+    if (uErr) return res.status(500).json({ message: uErr.message });
+    if (!rows.length) return res.status(404).json({ message: 'User not found' });
+    q('INSERT INTO AccountRequests (username,type,details) VALUES (?,?,?)',
+      [username, type, details || ''], (iErr) => {
+        if (iErr) return res.status(500).json({ message: iErr.message });
+        res.status(201).json({ message: 'Request submitted to Admin' });
+      });
+  });
+});
+
+// Any user — check the status of their own requests (used for notifications)
+app.get('/account-requests/mine/:username', (req, res) => {
+  q('SELECT RequestID, type, details, status, CreatedAt, ResolvedAt FROM AccountRequests WHERE username=? ORDER BY CreatedAt DESC',
+    [req.params.username], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// Admin only — view all requests, with the linked employee's info attached
+// (so a "change" request can show a ready-to-edit employee form)
+app.get('/account-requests', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
+  q(`SELECT ar.*, u.EmployeeID, u.level AS AccountLevel, u.role AS AccountRole,
+            e.FirstName, e.LastName, e.Department, e.Email
+     FROM AccountRequests ar
+     LEFT JOIN Users u ON u.username = ar.username
+     LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID
+     ORDER BY (ar.status='pending') DESC, ar.CreatedAt DESC`,
+    [], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// Admin only — approve or deny a request
+app.patch('/account-requests/:id', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const reqId  = parseInt(req.params.id, 10);
+  const { action, resolvedBy } = req.body; // action: 'approve' | 'deny'
+  if (!['approve', 'deny'].includes(action)) return res.status(400).json({ message: 'action must be approve or deny' });
+
+  q('SELECT * FROM AccountRequests WHERE RequestID=?', [reqId], (fErr, rows) => {
+    if (fErr) return res.status(500).json({ message: fErr.message });
+    if (!rows.length) return res.status(404).json({ message: 'Request not found' });
+    const request = rows[0];
+    if (request.status !== 'pending') return res.status(409).json({ message: 'Request already resolved' });
+
+    const finish = () => {
+      q('UPDATE AccountRequests SET status=?, ResolvedAt=NOW(), ResolvedBy=? WHERE RequestID=?',
+        [action === 'approve' ? 'approved' : 'denied', resolvedBy || 'Admin', reqId], (uErr) => {
+          if (uErr) return res.status(500).json({ message: uErr.message });
+          res.json({ message: `Request ${action === 'approve' ? 'approved' : 'denied'}` });
+        });
+    };
+
+    // Approving a delete request removes both the login account AND the linked
+    // employee record — otherwise the person's name keeps showing up in Manage
+    // Employees / Departments even though their account (and job) is gone.
+    // Approving a change request just marks it resolved — the admin edits the
+    // employee directly via the Change button, which opens Manage Employees.
+    if (action === 'approve' && request.type === 'delete') {
+      q('SELECT EmployeeID, fullName FROM Users WHERE username=?', [request.username], (lErr, uRows) => {
+        if (lErr) return res.status(500).json({ message: lErr.message });
+        const fullName = uRows[0]?.fullName || null;
+        let employeeId = uRows[0]?.EmployeeID || null;
+
+        const deleteUserThenEmployee = (empId) => {
+          q('DELETE FROM Users WHERE username=?', [request.username], (dErr) => {
+            if (dErr) return res.status(500).json({ message: dErr.message });
+            if (empId) q('DELETE FROM Employees WHERE EmployeeID=?', [empId], () => finish());
+            else finish();
+          });
+        };
+
+        if (employeeId) {
+          deleteUserThenEmployee(employeeId);
+        } else if (fullName) {
+          // Fallback for accounts created before the EmployeeID link existed:
+          // match on "FirstName LastName" = fullName, but only if it's unambiguous.
+          q(`SELECT EmployeeID FROM Employees WHERE CONCAT(FirstName,' ',LastName)=?`, [fullName], (mErr, mRows) => {
+            const matchedId = (!mErr && mRows.length === 1) ? mRows[0].EmployeeID : null;
+            deleteUserThenEmployee(matchedId);
+          });
+        } else {
+          deleteUserThenEmployee(null);
+        }
+      });
+    } else {
+      finish();
+    }
+  });
+});
+
+// Direct delete — Admin only. Removes the Employees row outright (and any Users
+// account still linked to it), regardless of whether it came through a request.
+// This is the reliable path for purging test/dummy data or ex-staff records.
+app.delete('/employees/:id', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const employeeId = parseInt(req.params.id, 10);
+  q('DELETE FROM Users WHERE EmployeeID=?', [employeeId], (uErr) => {
+    if (uErr) return res.status(500).json({ message: uErr.message });
+    q('DELETE FROM Employees WHERE EmployeeID=?', [employeeId], (eErr, result) => {
+      if (eErr) return res.status(500).json({ message: eErr.message });
+      if (!result.affectedRows) return res.status(404).json({ message: 'Employee not found' });
+      res.json({ message: 'Employee and any linked account deleted' });
+    });
+  });
+});
+
 // ── ACCOUNTS (Admin only — includes plaintext passwords) ─────────────────────
 app.get('/accounts', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
-  q(`SELECT u.UserID, u.username, u.password, u.fullName, u.level, u.role, u.isBanned, u.wallet,
-            e.EmployeeID, e.Department
+  // Passwords are never returned here — they're hashed and can only be reset
+  // (not revealed) via the PIN-gated POST /accounts/reset-password.
+  q(`SELECT u.UserID, u.username, u.fullName, u.level, u.role, u.isBanned, u.wallet,
+            e.EmployeeID, e.Department,
+            (u.PinHash IS NOT NULL) AS hasPin
      FROM Users u
      LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID
      ORDER BY u.username`,
     [], (err, rows) => {
       if (err) return res.status(500).json({ message: err.message });
       res.json(rows);
+    });
+});
+
+// Admin sets/changes their own security PIN (required before passwords can be revealed).
+// If a PIN already exists, the current one must be supplied to change it.
+app.post('/accounts/set-pin', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const { username, pin, currentPin } = req.body;
+  if (!username || !pin) return res.status(400).json({ message: 'username and pin required' });
+  if (!/^\d{4,8}$/.test(String(pin))) return res.status(400).json({ message: 'PIN must be 4-8 digits' });
+
+  q('SELECT PinHash, PinSalt FROM Users WHERE username=?', [username], (sErr, rows) => {
+    if (sErr) return res.status(500).json({ message: sErr.message });
+    if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+    const existing = rows[0];
+    if (existing.PinHash) {
+      if (!currentPin || hashPin(currentPin, existing.PinSalt) !== existing.PinHash) {
+        return res.status(401).json({ message: 'Current PIN is incorrect' });
+      }
+    }
+    const salt = newSalt();
+    const hash = hashPin(pin, salt);
+    q('UPDATE Users SET PinHash=?, PinSalt=? WHERE username=?', [hash, salt, username], (uErr) => {
+      if (uErr) return res.status(500).json({ message: uErr.message });
+      res.json({ message: 'PIN saved' });
+    });
+  });
+});
+
+// Passwords are hashed (bcrypt) and cannot be decrypted or displayed, so instead
+// of revealing them, a PIN-gated Admin action resets one to a fresh random
+// password and returns it once — same pattern as the auto-created-account flow.
+app.post('/accounts/reset-password', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const { adminUsername, username, pin } = req.body;
+  if (!adminUsername || !username || !pin) return res.status(400).json({ message: 'adminUsername, username and pin required' });
+
+  q('SELECT PinHash, PinSalt FROM Users WHERE username=?', [adminUsername], (sErr, rows) => {
+    if (sErr) return res.status(500).json({ message: sErr.message });
+    if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+    const admin = rows[0];
+    if (!admin.PinHash) return res.status(400).json({ message: 'No PIN set yet — set one first' });
+    if (hashPin(pin, admin.PinSalt) !== admin.PinHash) return res.status(401).json({ message: 'Incorrect PIN' });
+
+    const newPassword = randomPassword();
+    q('UPDATE Users SET password=? WHERE username=?', [hashPassword(newPassword), username], (uErr, result) => {
+      if (uErr) return res.status(500).json({ message: uErr.message });
+      if (!result.affectedRows) return res.status(404).json({ message: 'User not found' });
+      res.json({ username, password: newPassword });
+    });
+  });
+});
+
+// Admin only — one account + its linked employee record, for the Account Requests "Change" modal
+app.get('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  q(`SELECT u.UserID, u.username, u.fullName, u.level, u.role,
+            e.EmployeeID, e.FirstName, e.LastName, e.Department, e.Email
+     FROM Users u
+     LEFT JOIN Employees e ON e.EmployeeID = u.EmployeeID
+     WHERE u.username=?`,
+    [req.params.username], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+      res.json(rows[0]);
     });
 });
 
@@ -532,6 +800,75 @@ app.get('/employees/:id/photo', (req, res) => {
 });
 
 // Update an existing employee (e.g. fix a missing/incorrect Department) — Manager level or above
+// Admin only — update a Users row's clearance level/role (used by the Change-request modal)
+app.patch('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const oldUsername = req.params.username;
+  const { level, role, fullName } = req.body;
+  const fields = [];
+  const vals   = [];
+  if (level    !== undefined) { fields.push('level=?');    vals.push(Math.min(Math.max(parseInt(level, 10) || CLEARANCE.EMPLOYEE, CLEARANCE.STUDENT), CLEARANCE.ADMIN)); }
+  if (role     !== undefined) { fields.push('role=?');     vals.push(role); }
+  if (fullName !== undefined) { fields.push('fullName=?'); vals.push(fullName); }
+  if (!fields.length) return res.status(400).json({ message: 'No fields to update' });
+
+  const applyFieldUpdate = (username, cb) => {
+    const v = [...vals, username];
+    q(`UPDATE Users SET ${fields.join(', ')} WHERE username=?`, v, cb);
+  };
+
+  // When the person's name changes, their username should change to match it
+  // (e.g. "Jane Doe" -> jane.doe), same convention new accounts are auto-named
+  // with. Everywhere else in the DB that stores the username by value (not a
+  // real foreign key) gets renamed along with it so history stays linked.
+  if (fullName !== undefined) {
+    q('SELECT fullName FROM Users WHERE username=?', [oldUsername], (sErr, rows) => {
+      if (sErr) return res.status(500).json({ message: sErr.message });
+      if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+      const nameChanged = fullName.trim() && fullName.trim() !== rows[0].fullName;
+      if (!nameChanged) return applyFieldUpdate(oldUsername, finishPlain);
+
+      const [first, ...rest] = fullName.trim().split(/\s+/);
+      const last = rest.join(' ') || first;
+      const base = `${slugify(first)}.${slugify(last)}`;
+      q('SELECT username FROM Users WHERE username LIKE ? AND username<>?', [`${base}%`, oldUsername], (uErr, taken) => {
+        if (uErr) return res.status(500).json({ message: uErr.message });
+        const takenSet = new Set(taken.map(r => r.username));
+        let newUsername = base;
+        let n = 2;
+        while (takenSet.has(newUsername)) newUsername = `${base}${n++}`;
+
+        if (newUsername === oldUsername) return applyFieldUpdate(oldUsername, finishPlain);
+
+        applyFieldUpdate(oldUsername, (fErr) => {
+          if (fErr) return res.status(500).json({ message: fErr.message });
+          q('UPDATE Users SET username=? WHERE username=?', [newUsername, oldUsername], (rErr) => {
+            if (rErr) return res.status(500).json({ message: rErr.message });
+            // Cascade the rename across the other tables that reference the
+            // username by value, so borrow/wallet/request history stays intact.
+            const renames = [
+              ['UPDATE BorrowLog SET BorrowedBy=? WHERE BorrowedBy=?', [newUsername, oldUsername]],
+              ['UPDATE BorrowLog SET ReturnedBy=? WHERE ReturnedBy=?', [newUsername, oldUsername]],
+              ['UPDATE WalletLog SET Username=? WHERE Username=?',    [newUsername, oldUsername]],
+              ['UPDATE AccountRequests SET username=? WHERE username=?', [newUsername, oldUsername]],
+              ['UPDATE Users SET bannedBy=? WHERE bannedBy=?',        [newUsername, oldUsername]],
+              ['UPDATE MaintenanceNotes SET UpdatedBy=? WHERE UpdatedBy=?', [newUsername, oldUsername]],
+            ];
+            renames.forEach(([sql, params]) => db.query(sql, params, () => {}));
+            res.json({ message: 'Account updated', username: newUsername, usernameChanged: true });
+          });
+        });
+      });
+    });
+  } else {
+    applyFieldUpdate(oldUsername, finishPlain);
+  }
+
+  function finishPlain(err) {
+    if (err) return res.status(500).json({ message: err.message });
+    res.json({ message: 'Account updated', username: oldUsername, usernameChanged: false });
+  }
+});
+
 app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   const empId = parseInt(req.params.id, 10);
   const { firstName, lastName, department, email } = req.body;
@@ -558,6 +895,14 @@ app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
 app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   const { firstName, lastName, department, jobTitle, email, photoData, photoMime } = req.body;
   if (!firstName || !lastName) return res.status(400).json({ message: 'firstName and lastName required' });
+
+  // Clamp requested clearance level to a valid tier, and never let a creator grant
+  // a level higher than their own (prevents a Manager from minting an Admin account).
+  const creatorLevel = parseInt(req.headers['x-user-level'], 10) || CLEARANCE.EMPLOYEE;
+  let requestedLevel = parseInt(req.body.level, 10) || CLEARANCE.EMPLOYEE;
+  requestedLevel = Math.min(Math.max(requestedLevel, CLEARANCE.STUDENT), CLEARANCE.ADMIN);
+  if (requestedLevel > creatorLevel) requestedLevel = creatorLevel;
+
   let photoBuffer = null;
   if (photoData) {
     const base64 = photoData.includes(',') ? photoData.split(',')[1] : photoData;
@@ -575,8 +920,9 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
           return res.status(201).json({ message: 'Employee added, but account creation failed', employeeId });
         }
         const password = randomPassword();
+        const role = ROLE_NAMES[requestedLevel] || 'Employee';
         q('INSERT INTO Users (username,password,fullName,level,role,EmployeeID) VALUES (?,?,?,?,?,?)',
-          [username, password, `${firstName} ${lastName}`, CLEARANCE.EMPLOYEE, 'Employee', employeeId],
+          [username, hashPassword(password), `${firstName} ${lastName}`, requestedLevel, role, employeeId],
           (aErr) => {
             if (aErr) {
               console.error('AUTO ACCOUNT:', aErr.message);
@@ -585,7 +931,7 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
             res.status(201).json({
               message: 'Employee added and account created',
               employeeId,
-              account: { username, password, level: CLEARANCE.EMPLOYEE, role: 'Employee' },
+              account: { username, password, level: requestedLevel, role },
             });
           });
       });
