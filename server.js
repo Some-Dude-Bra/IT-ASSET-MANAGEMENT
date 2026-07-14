@@ -6,9 +6,16 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 const crypto  = require('crypto');
+const bcrypt  = require('bcryptjs');
+
+// ─── PASSWORD HASHING HELPERS ─────────────────────────────────────────────────
+// Passwords are never stored or compared as plaintext. bcrypt hashes always
+// start with "$2" (e.g. "$2a$10$..."), so isHashed() lets us tell a hash apart
+// from a legacy plaintext password left over from before hashing was added.
+function isHashed(pw) { return typeof pw === 'string' && /^\$2[aby]?\$/.test(pw); }
+function hashPassword(pw) { return bcrypt.hashSync(String(pw), 10); }
 
 const app = express();
-
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
