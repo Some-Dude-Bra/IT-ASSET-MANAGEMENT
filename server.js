@@ -1,5 +1,4 @@
 // ─── DEPENDENCIES ────────────────────────────────────────────────────────────
-
 const express = require('express');
 const mysql   = require('mysql2');
 const cors    = require('cors');
@@ -18,13 +17,6 @@ function hashPassword(pw) { return bcrypt.hashSync(String(pw), 10); }
 
 const app = express();
 
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-app.use(express.static(__dirname));   // <-- Add this
-
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -370,9 +362,10 @@ app.post('/wallet/deduct', requireLevel(CLEARANCE.MANAGER), (req, res) => {
 });
 
 // ── ASSETS ────────────────────────────────────────────────────────────────────
-app.get('/assets', (_req, res) => {
+app.get('/assets', (req, res) => {
   // Join in the most recent BorrowLog row per asset (via ROW_NUMBER) so "Last User" / Return Date aren't blank,
   // plus any saved MaintenanceNotes for the Repair screen.
+  const lvl = parseInt(req.headers['x-user-level'], 10) || CLEARANCE.STUDENT;
   q(`SELECT hi.AssetID, hi.SerialNumber, hi.Brand, hi.Model, hi.Status, hi.PhotoPath, hi.DailyCost, hi.Description,
             lb.BorrowedBy, lb.DueDate, lb.Status AS BorrowStatus,
             mn.Notes AS RepairNotes
@@ -386,7 +379,11 @@ app.get('/assets', (_req, res) => {
      ORDER BY hi.AssetID`,
     [], (err, rows) => {
       if (err) { console.error('ASSETS:', err.message); return res.status(500).json({ message: err.message }); }
-      res.json(rows);
+      // Assets currently "In Service" (under maintenance/repair) are only visible
+      // to Maintenance clearance and above — everyone else's Inventory list just
+      // won't include them, same as if they didn't exist yet.
+      const visible = lvl >= CLEARANCE.MAINTENANCE ? rows : rows.filter(r => r.Status !== 'In Service');
+      res.json(visible);
     });
 });
 
@@ -489,20 +486,30 @@ app.post('/borrow', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
   let done = 0;
   const errors = [];
   assetIds.forEach(id => {
-    q('SELECT DailyCost FROM HardwareInventory WHERE AssetID=?', [id], (err, rows) => {
-      const cost = parseFloat(rows?.[0]?.DailyCost) || 0;
+    q('SELECT DailyCost, Status FROM HardwareInventory WHERE AssetID=?', [id], (sErr, rows) => {
+      if (sErr || !rows.length) { errors.push(`Asset ${id} not found`); done++; if (done === assetIds.length) finish(); return; }
+      // Only Available assets can be borrowed — blocks borrowing something
+      // that's currently In Service (under maintenance) or already In Use,
+      // even if someone calls this endpoint directly instead of through the UI.
+      if (rows[0].Status !== 'Available') {
+        errors.push(`Asset ${id} is not available (currently ${rows[0].Status})`);
+        done++; if (done === assetIds.length) finish();
+        return;
+      }
+      const cost = parseFloat(rows[0].DailyCost) || 0;
       q('INSERT INTO BorrowLog (AssetID,BorrowedBy,DueDate,DailyCost) VALUES (?,?,?,?)',
         [id, borrowedBy, dueDate||null, cost], (iErr) => {
           if (iErr) errors.push(iErr.message);
           q("UPDATE HardwareInventory SET Status='In Use', UpdatedAt=NOW() WHERE AssetID=?", [id], () => {});
           done++;
-          if (done === assetIds.length) {
-            if (errors.length) return res.status(500).json({ message: errors.join(', ') });
-            res.json({ message: 'Assets borrowed successfully' });
-          }
+          if (done === assetIds.length) finish();
         });
     });
   });
+  function finish() {
+    if (errors.length) return res.status(400).json({ message: errors.join(', ') });
+    res.json({ message: 'Assets borrowed successfully' });
+  }
 });
 
 // Only the person who borrowed an item may return it — no clearance level,
@@ -713,8 +720,8 @@ app.delete('/employees/:id', requireLevel(CLEARANCE.ADMIN), (req, res) => {
 
 // ── ACCOUNTS (Admin only — includes plaintext passwords) ─────────────────────
 app.get('/accounts', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
-  // Passwords are withheld here by design — the frontend must call
-  // POST /accounts/reveal with a verified PIN to actually see them.
+  // Passwords are never returned here — they're hashed and can only be reset
+  // (not revealed) via the PIN-gated POST /accounts/reset-password.
   q(`SELECT u.UserID, u.username, u.fullName, u.level, u.role, u.isBanned, u.wallet,
             e.EmployeeID, e.Department,
             (u.PinHash IS NOT NULL) AS hasPin
@@ -752,23 +759,25 @@ app.post('/accounts/set-pin', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   });
 });
 
-// Reveal plaintext passwords — Admin only, and only with a correct PIN.
-app.post('/accounts/reveal', requireLevel(CLEARANCE.ADMIN), (req, res) => {
-  const { username, pin } = req.body;
-  if (!username || !pin) return res.status(400).json({ message: 'username and pin required' });
+// Passwords are hashed (bcrypt) and cannot be decrypted or displayed, so instead
+// of revealing them, a PIN-gated Admin action resets one to a fresh random
+// password and returns it once — same pattern as the auto-created-account flow.
+app.post('/accounts/reset-password', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const { adminUsername, username, pin } = req.body;
+  if (!adminUsername || !username || !pin) return res.status(400).json({ message: 'adminUsername, username and pin required' });
 
-  q('SELECT PinHash, PinSalt FROM Users WHERE username=?', [username], (sErr, rows) => {
+  q('SELECT PinHash, PinSalt FROM Users WHERE username=?', [adminUsername], (sErr, rows) => {
     if (sErr) return res.status(500).json({ message: sErr.message });
     if (!rows.length) return res.status(404).json({ message: 'Account not found' });
     const admin = rows[0];
     if (!admin.PinHash) return res.status(400).json({ message: 'No PIN set yet — set one first' });
     if (hashPin(pin, admin.PinSalt) !== admin.PinHash) return res.status(401).json({ message: 'Incorrect PIN' });
 
-    q(`SELECT username, password FROM Users ORDER BY username`, [], (pErr, pwRows) => {
-      if (pErr) return res.status(500).json({ message: pErr.message });
-      const map = {};
-      pwRows.forEach(r => { map[r.username] = r.password; });
-      res.json({ passwords: map });
+    const newPassword = randomPassword();
+    q('UPDATE Users SET password=? WHERE username=?', [hashPassword(newPassword), username], (uErr, result) => {
+      if (uErr) return res.status(500).json({ message: uErr.message });
+      if (!result.affectedRows) return res.status(404).json({ message: 'User not found' });
+      res.json({ username, password: newPassword });
     });
   });
 });
@@ -808,6 +817,7 @@ app.get('/employees/:id/photo', (req, res) => {
 // Update an existing employee (e.g. fix a missing/incorrect Department) — Manager level or above
 // Admin only — update a Users row's clearance level/role (used by the Change-request modal)
 app.patch('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
+  const oldUsername = req.params.username;
   const { level, role, fullName } = req.body;
   const fields = [];
   const vals   = [];
@@ -815,11 +825,63 @@ app.patch('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   if (role     !== undefined) { fields.push('role=?');     vals.push(role); }
   if (fullName !== undefined) { fields.push('fullName=?'); vals.push(fullName); }
   if (!fields.length) return res.status(400).json({ message: 'No fields to update' });
-  vals.push(req.params.username);
-  q(`UPDATE Users SET ${fields.join(', ')} WHERE username=?`, vals, (err) => {
+
+  const applyFieldUpdate = (username, cb) => {
+    const v = [...vals, username];
+    q(`UPDATE Users SET ${fields.join(', ')} WHERE username=?`, v, cb);
+  };
+
+  // When the person's name changes, their username should change to match it
+  // (e.g. "Jane Doe" -> jane.doe), same convention new accounts are auto-named
+  // with. Everywhere else in the DB that stores the username by value (not a
+  // real foreign key) gets renamed along with it so history stays linked.
+  if (fullName !== undefined) {
+    q('SELECT fullName FROM Users WHERE username=?', [oldUsername], (sErr, rows) => {
+      if (sErr) return res.status(500).json({ message: sErr.message });
+      if (!rows.length) return res.status(404).json({ message: 'Account not found' });
+      const nameChanged = fullName.trim() && fullName.trim() !== rows[0].fullName;
+      if (!nameChanged) return applyFieldUpdate(oldUsername, finishPlain);
+
+      const [first, ...rest] = fullName.trim().split(/\s+/);
+      const last = rest.join(' ') || first;
+      const base = `${slugify(first)}.${slugify(last)}`;
+      q('SELECT username FROM Users WHERE username LIKE ? AND username<>?', [`${base}%`, oldUsername], (uErr, taken) => {
+        if (uErr) return res.status(500).json({ message: uErr.message });
+        const takenSet = new Set(taken.map(r => r.username));
+        let newUsername = base;
+        let n = 2;
+        while (takenSet.has(newUsername)) newUsername = `${base}${n++}`;
+
+        if (newUsername === oldUsername) return applyFieldUpdate(oldUsername, finishPlain);
+
+        applyFieldUpdate(oldUsername, (fErr) => {
+          if (fErr) return res.status(500).json({ message: fErr.message });
+          q('UPDATE Users SET username=? WHERE username=?', [newUsername, oldUsername], (rErr) => {
+            if (rErr) return res.status(500).json({ message: rErr.message });
+            // Cascade the rename across the other tables that reference the
+            // username by value, so borrow/wallet/request history stays intact.
+            const renames = [
+              ['UPDATE BorrowLog SET BorrowedBy=? WHERE BorrowedBy=?', [newUsername, oldUsername]],
+              ['UPDATE BorrowLog SET ReturnedBy=? WHERE ReturnedBy=?', [newUsername, oldUsername]],
+              ['UPDATE WalletLog SET Username=? WHERE Username=?',    [newUsername, oldUsername]],
+              ['UPDATE AccountRequests SET username=? WHERE username=?', [newUsername, oldUsername]],
+              ['UPDATE Users SET bannedBy=? WHERE bannedBy=?',        [newUsername, oldUsername]],
+              ['UPDATE MaintenanceNotes SET UpdatedBy=? WHERE UpdatedBy=?', [newUsername, oldUsername]],
+            ];
+            renames.forEach(([sql, params]) => db.query(sql, params, () => {}));
+            res.json({ message: 'Account updated', username: newUsername, usernameChanged: true });
+          });
+        });
+      });
+    });
+  } else {
+    applyFieldUpdate(oldUsername, finishPlain);
+  }
+
+  function finishPlain(err) {
     if (err) return res.status(500).json({ message: err.message });
-    res.json({ message: 'Account updated' });
-  });
+    res.json({ message: 'Account updated', username: oldUsername, usernameChanged: false });
+  }
 });
 
 app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
@@ -875,7 +937,7 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
         const password = randomPassword();
         const role = ROLE_NAMES[requestedLevel] || 'Employee';
         q('INSERT INTO Users (username,password,fullName,level,role,EmployeeID) VALUES (?,?,?,?,?,?)',
-          [username, password, `${firstName} ${lastName}`, requestedLevel, role, employeeId],
+          [username, hashPassword(password), `${firstName} ${lastName}`, requestedLevel, role, employeeId],
           (aErr) => {
             if (aErr) {
               console.error('AUTO ACCOUNT:', aErr.message);
@@ -890,7 +952,6 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
       });
     });
 });
-
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('─── ERROR ──', req.method, req.originalUrl);

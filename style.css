@@ -1,4 +1,4 @@
- @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Inter:wght@300;400;500;600&display=swap');
 
 :root {
   --teal: #00e5c8;
@@ -18,6 +18,18 @@
   --text: #e8f8f5;
   --muted: #7ab8b0;
   --border: rgba(0,229,200,0.25);
+  --accent-text: #000000;
+  --box-bg: var(--teal-dark);
+  --box-text: var(--accent-text);
+  /* Radial-gradient stops behind the login screen, dashboard, and every other
+     page's content area. Overridden by app.js's light/dark mode toggle so
+     these three surfaces turn solid white in light mode. */
+  --page-login-1: #003328;
+  --page-login-2: #000000;
+  --dash-grid-1: #001a18;
+  --dash-grid-2: #000000;
+  --page-content-1: #001a18;
+  --page-content-2: #000000;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -35,7 +47,7 @@ body {
 
 /* ── TOPBAR ── */
 .topbar {
-  background: linear-gradient(90deg, #000 0%, #0a2020 40%, #00e5c8 100%);
+  background: linear-gradient(90deg, var(--topbar-1, #000) 0%, var(--topbar-2, #0a2020) 40%, var(--teal) 100%);
   height: 64px;
   display: flex;
   align-items: center;
@@ -100,7 +112,7 @@ body {
 
 /* ── LOGIN PAGE ── */
 #page-login {
-  background: radial-gradient(ellipse at 50% 0%, #003328 0%, #000 60%);
+  background: radial-gradient(ellipse at 50% 0%, var(--page-login-1) 0%, var(--page-login-2) 60%);
   justify-content: center;
   align-items: center;
   position: relative;
@@ -144,17 +156,10 @@ padding-right: 0%;
   align-items: center;
   gap: 22px;
 }
-.login-heading {
-  font-family: 'Orbitron', monospace;
-  font-size: 16px;
-  color: var(--text);
-  letter-spacing: 3px;
-  text-align: center;
-}
 .login-field {
   width: 100%;
   max-width: 380px;
-  background: #000;
+  background: var(--surface);
   border: 2px solid transparent;
   border-radius: 30px;
   padding: 14px 22px;
@@ -182,7 +187,7 @@ padding-right: 0%;
 .login-field::placeholder { color: #556; }
 .login-btn {
   background: linear-gradient(135deg, var(--teal-dark), var(--teal));
-  color: #000;
+  color: var(--accent-text);
   border: none;
   border-radius: 30px;
   padding: 14px 52px;
@@ -218,7 +223,7 @@ padding-right: 0%;
   justify-content: center;
   align-items: center;
   flex: 1;
-  background: radial-gradient(ellipse at 50% 50%, #001a18 0%, #000 100%);
+  background: radial-gradient(ellipse at 50% 50%, var(--dash-grid-1) 0%, var(--dash-grid-2) 100%);
   position: relative;
 }
 .dash-bg-ring {
@@ -268,7 +273,7 @@ padding-right: 0%;
 .page-content {
   flex: 1;
   padding: 32px 28px;
-  background: radial-gradient(ellipse at 50% 0%, #001a18 0%, #000 70%);
+  background: radial-gradient(ellipse at 50% 0%, var(--page-content-1) 0%, var(--page-content-2) 70%);
 }
 .section-title {
   font-family: 'Orbitron', monospace;
@@ -283,7 +288,7 @@ padding-right: 0%;
   margin-bottom: 24px;
 }
 .asset-table th {
-  background: #000;
+  background: var(--surface);
   border: 1px solid var(--teal);
   padding: 12px 16px;
   font-size: 13px;
@@ -293,7 +298,7 @@ padding-right: 0%;
   text-align: center;
 }
 .asset-table td {
-  background: #000;
+  background: var(--surface);
   border: 1px solid var(--teal);
   padding: 12px 16px;
   font-size: 13px;
@@ -301,7 +306,7 @@ padding-right: 0%;
   text-align: center;
   font-family: 'Share Tech Mono', monospace;
 }
-.asset-table tr:hover td { background: #001a18; }
+.asset-table tr:hover td { background: var(--surface2); }
 .status-dot {
   display: inline-flex;
   align-items: center;
@@ -319,7 +324,7 @@ padding-right: 0%;
 
 .teal-btn {
   background: linear-gradient(135deg, var(--teal-dark), var(--teal));
-  color: #000;
+  color: var(--accent-text);
   border: none;
   border-radius: 20px;
   padding: 7px 16px;
@@ -338,7 +343,7 @@ padding-right: 0%;
   box-shadow: none;
 }
 .add-btn {
-  background: #111;
+  background: var(--surface);
   color: var(--text);
   border: 1px solid var(--teal);
   border-radius: 6px;
@@ -348,7 +353,7 @@ padding-right: 0%;
   display: inline-flex; align-items: center; gap: 5px;
   transition: background 0.15s;
 }
-.add-btn:hover { background: #001a18; }
+.add-btn:hover { background: var(--surface2); }
 .add-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
@@ -375,15 +380,15 @@ padding-right: 0%;
 .repair-img {
   width: 200px; height: 160px;
   border-radius: 10px;
-  background: #1a2a2a;
+  background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
   font-size: 60px;
   flex-shrink: 0;
 }
 .repair-info { flex: 1; min-width: 200px; }
 .repair-label {
-  background: var(--teal-dark);
-  color: #000;
+  background: var(--box-bg);
+  color: var(--box-text);
   padding: 6px 14px;
   border-radius: 6px;
   font-size: 12px;
@@ -427,7 +432,7 @@ padding-right: 0%;
 .asset-detail-img {
   width: 220px; height: 180px;
   border-radius: 10px;
-  background: #1a2a2a;
+  background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
   font-size: 70px;
   flex-shrink: 0;
@@ -443,8 +448,8 @@ padding-right: 0%;
   text-transform: uppercase;
 }
 .field-value {
-  background: var(--teal-dark);
-  color: #000;
+  background: var(--box-bg);
+  color: var(--box-text);
   padding: 9px 14px;
   border-radius: 8px;
   font-size: 13px;
@@ -664,5 +669,5 @@ select.field-input {
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-track { background: var(--bg2); }
 ::-webkit-scrollbar-thumb { background: var(--teal-dark); border-radius: 3px; }
