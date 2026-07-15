@@ -1,6 +1,5 @@
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-
-const API = '';
+const API = 'http://localhost:3000';
 
 // ─── AUTH FETCH ──────────────────────────────────────────────────────────────
 // Wraps fetch() and attaches the logged-in user's clearance level so the server
@@ -23,16 +22,64 @@ function authFetch(url, options = {}) {
 const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
 
 // ─── THEMES ──────────────────────────────────────────────────────────────────
+// Themes are scoped PER USER (keyed by username), not to the machine/browser —
+// each account remembers its own accent color and light/dark mode, so one
+// person's choice never bleeds into someone else's session on a shared device.
 const THEMES = {
-  teal:   { label: 'Dark (Teal)',   teal: '#00e5c8', tealDark: '#00b89e', glow: 'rgba(0,229,200,0.25)' },
-  purple: { label: 'Dark (Purple)', teal: '#b088ff', tealDark: '#8a5cf0', glow: 'rgba(176,136,255,0.25)' },
-  blue:   { label: 'Dark (Blue)',   teal: '#4db8ff', tealDark: '#1f8fe0', glow: 'rgba(77,184,255,0.25)' },
-  amber:  { label: 'Dark (Amber)',  teal: '#ffb347', tealDark: '#e08e1f', glow: 'rgba(255,179,71,0.25)' },
+  teal:    { label: 'Teal',                    teal: '#00e5c8', tealDark: '#00b89e', glow: 'rgba(0,229,200,0.25)' },
+  purple:  { label: 'Purple',                  teal: '#b088ff', tealDark: '#8a5cf0', glow: 'rgba(176,136,255,0.25)' },
+  blue:    { label: 'Blue',                     teal: '#4db8ff', tealDark: '#1f8fe0', glow: 'rgba(77,184,255,0.25)' },
+  amber:   { label: 'Amber',                    teal: '#ffb347', tealDark: '#e08e1f', glow: 'rgba(255,179,71,0.25)' },
+  ironman: { label: '🔴 Iron Man (Red/Gold)',   teal: '#ffd700', tealDark: '#a4132f', glow: 'rgba(255,215,0,0.3)' },
+  batman:  { label: '🦇 Batman (Black/Yellow)', teal: '#ffe135', tealDark: '#000000', glow: 'rgba(255,225,53,0.3)', accentText: '#ffffff', boxBg: '#d4af37', boxText: '#000000' },
 };
 const THEME_ORDER = Object.keys(THEMES);
-let currentThemeName = localStorage.getItem('crispyTheme') || 'teal';
 
-function applyTheme(name) {
+// A little Easter egg: tony.stark and bruce.wayne get their matching theme by
+// default on their very first login — anyone can still cycle away from it
+// (in Settings), and it never overrides a theme they've already picked.
+const DEFAULT_THEME_BY_USER = { 'tony.stark': 'ironman', 'bruce.wayne': 'batman' };
+
+const MODES = {
+  dark: {
+    label: '🌙 Dark Mode',
+    bg: '#050a0a', bg2: '#0a1212', surface: '#0d1a1a', surface2: '#112020',
+    text: '#e8f8f5', muted: '#7ab8b0',
+    topbar1: '#000000', topbar2: '#0a2020',
+    pageLogin1: '#003328', pageLogin2: '#000000',
+    dashGrid1: '#001a18', dashGrid2: '#000000',
+    pageContent1: '#001a18', pageContent2: '#000000',
+  },
+  light: {
+    label: '☀️ Light Mode',
+    bg: '#E5EEE4', bg2: '#E5EEE4', surface: '#E5EEE4', surface2: '#E5EEE4',
+    text: '#0c1c1c', muted: '#4a6b66',
+    topbar1: '#E5EEE4', topbar2: '#E5EEE4',
+    pageLogin1: '#E5EEE4', pageLogin2: '#E5EEE4',
+    dashGrid1: '#E5EEE4', dashGrid2: '#E5EEE4',
+    pageContent1: '#E5EEE4', pageContent2: '#E5EEE4',
+  },
+};
+
+// No user logged in yet (login screen) falls back to a neutral default rather
+// than whatever the last logged-in user on this machine had picked.
+let currentThemeName = 'teal';
+let currentModeName  = 'dark';
+
+function themeKey(username) { return `crispyTheme_${username}`; }
+function modeKey(username)  { return `crispyMode_${username}`;  }
+
+// Loads the given user's own saved theme/mode (or the defaults, if they've
+// never set one) and applies it. Called on login and never shares state
+// between different usernames on the same browser.
+function loadUserTheme(username) {
+  currentThemeName = (username && localStorage.getItem(themeKey(username))) || DEFAULT_THEME_BY_USER[username] || 'teal';
+  currentModeName  = (username && localStorage.getItem(modeKey(username)))  || 'dark';
+  applyTheme(currentThemeName, { persist: false });
+  applyMode(currentModeName,   { persist: false });
+}
+
+function applyTheme(name, opts = {}) {
   if (!THEMES[name]) name = 'teal';
   currentThemeName = name;
   const t = THEMES[name];
@@ -41,7 +88,33 @@ function applyTheme(name) {
   root.setProperty('--teal-dark', t.tealDark);
   root.setProperty('--teal-glow', t.glow);
   root.setProperty('--border', t.glow);
-  localStorage.setItem('crispyTheme', name);
+  root.setProperty('--accent-text', t.accentText || '#000000');
+  root.setProperty('--box-bg', t.boxBg || 'var(--teal-dark)');
+  root.setProperty('--box-text', t.boxText || 'var(--accent-text)');
+  if (opts.persist !== false && currentUser) localStorage.setItem(themeKey(currentUser.username), name);
+}
+
+function applyMode(name, opts = {}) {
+  if (!MODES[name]) name = 'dark';
+  currentModeName = name;
+  const m = MODES[name];
+  const root = document.documentElement.style;
+  root.setProperty('--bg', m.bg);
+  root.setProperty('--bg2', m.bg2);
+  root.setProperty('--surface', m.surface);
+  root.setProperty('--surface2', m.surface2);
+  root.setProperty('--text', m.text);
+  root.setProperty('--muted', m.muted);
+  root.setProperty('--topbar-1', m.topbar1);
+  root.setProperty('--topbar-2', m.topbar2);
+  root.setProperty('--page-login-1', m.pageLogin1);
+  root.setProperty('--page-login-2', m.pageLogin2);
+  root.setProperty('--dash-grid-1', m.dashGrid1);
+  root.setProperty('--dash-grid-2', m.dashGrid2);
+  root.setProperty('--page-content-1', m.pageContent1);
+  root.setProperty('--page-content-2', m.pageContent2);
+  document.documentElement.classList.toggle('light-mode', name === 'light');
+  if (opts.persist !== false && currentUser) localStorage.setItem(modeKey(currentUser.username), name);
 }
 
 function cycleTheme() {
@@ -53,7 +126,17 @@ function cycleTheme() {
   showNotif(`🎨 Theme: ${THEMES[next].label}`);
 }
 
-applyTheme(currentThemeName);
+function cycleMode() {
+  const next = currentModeName === 'dark' ? 'light' : 'dark';
+  applyMode(next);
+  const el = document.getElementById('settings-mode-value');
+  if (el) el.textContent = MODES[next].label;
+  showNotif(`${next === 'light' ? '☀️' : '🌙'} ${MODES[next].label}`);
+}
+
+// Neutral defaults for the login screen, before any user is loaded.
+applyTheme(currentThemeName, { persist: false });
+applyMode(currentModeName, { persist: false });
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentUser     = null;
@@ -170,7 +253,7 @@ function nav(page) {
     showNotif('⚠ You do not have clearance to access that page');
     page = 'dashboard';
   }
-  if (page !== 'accounts' && passwordsRevealed) { passwordsRevealed = false; revealedPasswords = {}; }
+  if (page !== 'accounts') { resetPasswordTarget = null; }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   window.scrollTo(0, 0);
@@ -215,6 +298,7 @@ async function doLogin() {
     if (response.ok) {
       const user = await response.json();
       currentUser = { username: user.username, fullName: user.fullName, level: user.level, role: user.role, wallet: parseFloat(user.wallet) || 0 };
+      loadUserTheme(currentUser.username);
       await loadAssets();
       await loadEmployees();
       await refreshNotifications();
@@ -243,6 +327,8 @@ async function doLogin() {
 function logout() {
   currentUser = null; cart = []; notifCount = 0;
   currentNotifications = [];
+  applyTheme('teal', { persist: false });
+  applyMode('dark', { persist: false });
   if (notifInterval) { clearInterval(notifInterval); notifInterval = null; }
   document.getElementById('notif-panel').style.display = 'none';
   document.getElementById('login-user').value = '';
@@ -393,6 +479,7 @@ function renderSettings() {
   document.getElementById('settings-username').textContent = currentUser.fullName;
   document.getElementById('settings-level').textContent    = lvlLabels[currentUser.level] || 'Level ' + currentUser.level;
   document.getElementById('settings-theme-value').textContent = THEMES[currentThemeName].label;
+  document.getElementById('settings-mode-value').textContent  = MODES[currentModeName].label;
 }
 
 // ─── SHRINE ──────────────────────────────────────────────────────────────────
@@ -410,7 +497,7 @@ function renderShrine() {
 // ─── ASSETS ──────────────────────────────────────────────────────────────────
 async function loadAssets() {
   try {
-    const response = await fetch(`${API}/assets`);
+    const response = await authFetch(`${API}/assets`);
     if (!response.ok) throw new Error('Failed');
     const raw = await response.json();
     if (raw.length > 0) {
@@ -698,11 +785,21 @@ async function saveRepairNotes() {
 async function markAvailable() {
   if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
   const asset = assets.find(a => a.id === selectedAssetId);
-  if (asset) { asset.status = 'available'; asset.borrowedBy = null; asset.returnDate = null; }
-  showNotif(`✓ ${asset?.name} status updated to Available`);
-  document.getElementById('repair-detail').style.display = 'none';
-  renderMaintenance();
-  refreshNotifications();
+  if (!asset) return;
+  try {
+    const res  = await authFetch(`${API}/assets/${asset.id}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'available' }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showNotif('Failed: ' + (data.message || 'Unknown')); return; }
+    asset.status = 'available';
+    showNotif(`✓ ${asset.name} status updated to Available`);
+    document.getElementById('repair-detail').style.display = 'none';
+    await loadAssets();
+    renderMaintenance();
+    refreshNotifications();
+  } catch { showNotif('Server offline — status not saved'); }
 }
 
 // ─── MANAGE ASSETS ───────────────────────────────────────────────────────────
@@ -1076,11 +1173,12 @@ async function saveChangeRequest() {
       });
       if (!empRes.ok) { const d = await empRes.json(); showNotif('Failed: ' + (d.message || 'Unknown')); return; }
     }
-    const accRes = await authFetch(`${API}/accounts/${encodeURIComponent(username)}`, {
+    const accRes  = await authFetch(`${API}/accounts/${encodeURIComponent(username)}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level, role: roles[level] || 'Employee', fullName: `${firstName} ${lastName}`.trim() || undefined }),
     });
-    if (!accRes.ok) { const d = await accRes.json(); showNotif('Failed: ' + (d.message || 'Unknown')); return; }
+    const accData = await accRes.json();
+    if (!accRes.ok) { showNotif('Failed: ' + (accData.message || 'Unknown')); return; }
 
     // Mark the request itself resolved (approved) now that the change is applied
     const reqRes = await authFetch(`${API}/account-requests/${requestId}`, {
@@ -1088,7 +1186,9 @@ async function saveChangeRequest() {
       body: JSON.stringify({ action: 'approve', resolvedBy: currentUser.username }),
     });
     if (reqRes.ok) {
-      showNotif('✓ Account updated and request resolved');
+      showNotif(accData.usernameChanged
+        ? `✓ Account updated — username changed to "${accData.username}"`
+        : '✓ Account updated and request resolved');
       closeChangeRequestModal();
       renderAccountRequests();
       refreshNotifications();
@@ -1172,15 +1272,13 @@ async function resolveAccountRequest(requestId, action) {
   } catch { showNotif('Server offline'); }
 }
 
-// ─── ACCOUNTS (admin only — shows plaintext passwords) ───────────────────────
+// ─── ACCOUNTS (admin only — passwords are hashed, never shown) ──────────────
 let accountsData     = [];
-let passwordsRevealed = false;
-let revealedPasswords = {};
+let resetPasswordTarget = null; // username currently pending a PIN-gated reset
 
 async function renderAccounts() {
   if (!currentUser || currentUser.level < CLEARANCE.ADMIN) { showNotif('Admin only'); nav('dashboard'); return; }
-  passwordsRevealed = false;
-  revealedPasswords = {};
+  resetPasswordTarget = null;
   const tbody = document.getElementById('accounts-tbody');
   tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
   try {
@@ -1194,32 +1292,24 @@ async function renderAccounts() {
 
 function renderAccountsTable() {
   const tbody = document.getElementById('accounts-tbody');
-  const btn   = document.getElementById('accounts-unlock-btn');
-  if (btn) btn.textContent = passwordsRevealed ? '🔒 Hide Passwords' : '🔓 Unlock Passwords';
-  if (!accountsData.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">No accounts found.</td></tr>'; return; }
-  tbody.innerHTML = accountsData.map(u => {
-    const pwCell = passwordsRevealed
-      ? `<span style="color:#ffcc00;">${revealedPasswords[u.username] ?? '—'}</span>`
-      : `<span style="color:var(--muted);letter-spacing:2px;">••••••••</span>`;
-    return `
+  if (!accountsData.length) { tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);padding:20px;">No accounts found.</td></tr>'; return; }
+  tbody.innerHTML = accountsData.map(u => `
       <tr ${u.isBanned ? 'style="background:rgba(255,68,68,0.05);"' : ''}>
         <td>${u.username}${u.isBanned ? ' <span style="color:#ff8888;">🚫</span>' : ''}</td>
-        <td style="font-family:'Share Tech Mono',monospace;">${pwCell}</td>
+        <td style="font-family:'Share Tech Mono',monospace;"><span style="color:var(--muted);letter-spacing:2px;">•••••••• (hashed)</span></td>
         <td>${u.fullName}</td>
         <td>${u.role} (Lvl ${u.level})</td>
         <td>${u.Department || '—'}</td>
         <td style="color:#00e5c8;">${peso(u.wallet)}</td>
-      </tr>`;
-  }).join('');
+        <td><button class="teal-btn" onclick="startResetPassword('${u.username}')">Reset</button></td>
+      </tr>`).join('');
 }
 
-function toggleAccountsPasswords() {
-  if (passwordsRevealed) {
-    passwordsRevealed = false;
-    revealedPasswords = {};
-    renderAccountsTable();
-    return;
-  }
+// Kicks off a PIN-gated password reset for one account. Passwords are hashed
+// server-side, so there's nothing to "reveal" — this issues a fresh one-time
+// password instead, same as when a new employee account is auto-created.
+function startResetPassword(username) {
+  resetPasswordTarget = username;
   const me = accountsData.find(u => u.username === currentUser.username);
   if (me && !me.hasPin) {
     openSetPinModal();
@@ -1261,10 +1351,12 @@ async function submitSetPin() {
   } catch { errEl.textContent = '⚠ Server offline'; }
 }
 
-// ─── VERIFY PIN MODAL (to reveal passwords) ─────────────────────────────────
+// ─── VERIFY PIN MODAL (to reset a password) ─────────────────────────────────
 function openVerifyPinModal() {
   document.getElementById('verify-pin-input').value = '';
   document.getElementById('verify-pin-error').textContent = '';
+  const targetEl = document.getElementById('verify-pin-target');
+  if (targetEl) targetEl.textContent = resetPasswordTarget ? `Resetting password for: ${resetPasswordTarget}` : '';
   document.getElementById('verify-pin-modal').style.display = 'flex';
 }
 function closeVerifyPinModal() { document.getElementById('verify-pin-modal').style.display = 'none'; }
@@ -1272,19 +1364,18 @@ function closeVerifyPinModal() { document.getElementById('verify-pin-modal').sty
 async function submitVerifyPin() {
   const pin   = document.getElementById('verify-pin-input').value.trim();
   const errEl = document.getElementById('verify-pin-error');
-  if (!pin) { errEl.textContent = '⚠ Enter your PIN'; return; }
+  if (!pin)               { errEl.textContent = '⚠ Enter your PIN'; return; }
+  if (!resetPasswordTarget) { errEl.textContent = '⚠ No account selected'; return; }
   try {
-    const res  = await authFetch(`${API}/accounts/reveal`, {
+    const res  = await authFetch(`${API}/accounts/reset-password`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: currentUser.username, pin }),
+      body: JSON.stringify({ adminUsername: currentUser.username, username: resetPasswordTarget, pin }),
     });
     const data = await res.json();
     if (res.ok) {
-      revealedPasswords = data.passwords;
-      passwordsRevealed  = true;
       closeVerifyPinModal();
-      renderAccountsTable();
-      showNotif('🔓 Passwords unlocked');
+      alert(`New password for ${data.username}:\n\n${data.password}\n\nShare this with them — it won't be shown again.`);
+      resetPasswordTarget = null;
     } else { errEl.textContent = '⚠ ' + (data.message || 'Incorrect PIN'); }
   } catch { errEl.textContent = '⚠ Server offline'; }
 }
@@ -1415,7 +1506,10 @@ function openDept(name, color) {
   badge.textContent      = name;
   badge.style.background = DEPT_COLORS[name] || color;
   const topbar = document.getElementById('dept-topbar');
-  topbar.style.background = `linear-gradient(90deg, #000 0%, #0a0a20 40%, ${DEPT_COLORS[name] || color} 100%)`;
+  const modeVars = getComputedStyle(document.documentElement);
+  const t1 = modeVars.getPropertyValue('--topbar-1').trim() || '#000';
+  const t2 = modeVars.getPropertyValue('--topbar-2').trim() || '#0a0a20';
+  topbar.style.background = `linear-gradient(90deg, ${t1} 0%, ${t2} 40%, ${DEPT_COLORS[name] || color} 100%)`;
   const tbody = document.getElementById('dept-member-tbody');
 
   // Real employees, sorted into this department from the actual Employees table
@@ -1433,6 +1527,29 @@ function openDept(name, color) {
   nav('dept-detail');
 }
 
+// Drives the red banner at the top of the dashboard, above the icon buttons,
+// for anything due today or already overdue — separate from (and louder than)
+// the regular bell notification, since this is meant to be impossible to miss.
+function updateDueTodayBanner(dueItems) {
+  const banner = document.getElementById('due-today-banner');
+  const textEl = document.getElementById('due-today-text');
+  if (!banner || !textEl) return;
+  if (!dueItems.length) { banner.style.display = 'none'; return; }
+
+  const overdue = dueItems.filter(r => r.overdue);
+  const dueToday = dueItems.filter(r => !r.overdue);
+  let msg;
+  if (overdue.length && dueToday.length) {
+    msg = `You have ${dueToday.length} asset(s) due today and ${overdue.length} overdue — please return them.`;
+  } else if (overdue.length) {
+    msg = `You have ${overdue.length} overdue asset(s) — please return ${overdue.length > 1 ? 'them' : 'it'} now.`;
+  } else {
+    msg = `You have ${dueToday.length} asset(s) due for return today — please return ${dueToday.length > 1 ? 'them' : 'it'}.`;
+  }
+  textEl.textContent = msg;
+  banner.style.display = 'flex';
+}
+
 // ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
 // Pulls together everything the current user should be alerted about:
 //  • their own borrowed assets that are due soon / overdue for return
@@ -1440,11 +1557,12 @@ function openDept(name, color) {
 //  • (Admin) pending account requests
 //  • (everyone else) their own account requests that Admin just resolved
 async function refreshNotifications() {
-  if (!currentUser) { currentNotifications = []; updateAllNotifBadges(); return; }
+  if (!currentUser) { currentNotifications = []; updateAllNotifBadges(); updateDueTodayBanner([]); return; }
   const items = [];
   const now = new Date();
 
   // Returns due / overdue — only the ones borrowed by the logged-in user
+  const dueTodayOrOverdue = [];
   try {
     const res = await fetch(`${API}/borrows/active`);
     if (res.ok) {
@@ -1454,12 +1572,15 @@ async function refreshNotifications() {
         const daysLeft = Math.ceil((due - now) / 86400000);
         if (daysLeft < 0) {
           items.push({ icon: '⚠', text: `${r.Brand} ${r.Model} is OVERDUE for return (was due ${due.toLocaleDateString()})`, page: 'returns' });
+          dueTodayOrOverdue.push({ ...r, overdue: true });
         } else if (daysLeft <= 2) {
           items.push({ icon: '⏰', text: `${r.Brand} ${r.Model} return is due ${due.toLocaleDateString()}`, page: 'returns' });
+          if (daysLeft === 0) dueTodayOrOverdue.push({ ...r, overdue: false });
         }
       });
     }
   } catch { /* server offline — skip silently */ }
+  updateDueTodayBanner(dueTodayOrOverdue);
 
   // Assets awaiting repair (Maintenance clearance or above)
   if (currentUser.level >= CLEARANCE.MAINTENANCE) {

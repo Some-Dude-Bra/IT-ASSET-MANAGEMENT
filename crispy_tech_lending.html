@@ -59,6 +59,13 @@
       </div>
     </div>
   </div>
+  <div id="due-today-banner" style="display:none;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:20px 28px 0;padding:14px 20px;background:rgba(224,53,53,0.12);border:1px solid var(--red);border-radius:12px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:22px;">⚠️</span>
+      <span id="due-today-text" style="font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--text);"></span>
+    </div>
+    <button class="teal-btn" style="background:var(--red);flex-shrink:0;" onclick="nav('returns')">Return Now</button>
+  </div>
   <div class="dashboard-grid" id="dashboard-grid">
     <div class="dash-bg-ring"></div><div class="dash-bg-ring"></div>
   </div>
@@ -453,7 +460,9 @@
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
     <p class="section-title">Accounts</p>
     
-    <button class="teal-btn" id="accounts-unlock-btn" style="margin-bottom:16px;width:fit-content;" onclick="toggleAccountsPasswords()">🔓 Unlock Passwords</button>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:16px;">
+      Passwords are hashed and cannot be displayed. Use Reset to issue a new one-time password (PIN required).
+    </p>
     <table class="asset-table">
       <thead><tr><th>Username</th><th>Password</th><th>Full Name</th><th>Role</th><th>Department</th><th>Wallet</th><th></th></tr></thead>
       <tbody id="accounts-tbody"></tbody>
@@ -463,7 +472,7 @@
 
 <!-- ══════ WALLET MODAL (overlay) ══════ -->
 <div id="wallet-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:340px;max-width:95vw;">
+  <div style="background:var(--surface);border:1px solid var(--teal);border-radius:16px;padding:28px;width:340px;max-width:95vw;">
     <div id="wallet-modal-title" style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:16px;">Manage Wallet</div>
     <div id="wallet-modal-user"  style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:4px;"></div>
     <div id="wallet-modal-bal"   style="font-family:'Share Tech Mono',monospace;font-size:18px;color:#00e5c8;margin-bottom:18px;"></div>
@@ -479,7 +488,7 @@
 
 <!-- ══════ ACCOUNT REQUEST MODAL ══════ -->
 <div id="account-request-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:380px;max-width:95vw;">
+  <div style="background:var(--surface);border:1px solid var(--teal);border-radius:16px;padding:28px;width:380px;max-width:95vw;">
     <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:16px;">Request to Admin</div>
     <div class="field-group" style="margin-bottom:12px;">
       <span class="field-label">Request Type</span>
@@ -499,10 +508,10 @@
 
 <!-- ══════ SET SECURITY PIN MODAL ══════ -->
 <div id="set-pin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:340px;max-width:95vw;">
+  <div style="background:var(--surface);border:1px solid var(--teal);border-radius:16px;padding:28px;width:340px;max-width:95vw;">
     <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:6px;">Set Security PIN</div>
     <p style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:16px;">
-      This PIN protects viewing other accounts' passwords. 4-8 digits.
+      This PIN protects resetting other accounts' passwords. 4-8 digits.
     </p>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <div class="field-group" id="set-pin-current-row" style="display:none;">
@@ -528,12 +537,13 @@
 
 <!-- ══════ VERIFY PIN MODAL (to reveal passwords) ══════ -->
 <div id="verify-pin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:320px;max-width:95vw;">
+  <div style="background:var(--surface);border:1px solid var(--teal);border-radius:16px;padding:28px;width:320px;max-width:95vw;">
     <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:16px;">🔒 Enter Security PIN</div>
+    <div id="verify-pin-target" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:8px;"></div>
     <input class="field-input" id="verify-pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="PIN" style="width:100%;margin-bottom:8px;" onkeydown="if(event.key==='Enter') submitVerifyPin()">
     <div id="verify-pin-error" style="color:#ff4444;font-size:11px;min-height:16px;font-family:'Share Tech Mono',monospace;margin-bottom:8px;"></div>
     <div style="display:flex;gap:10px;">
-      <button class="teal-btn" style="flex:1;" onclick="submitVerifyPin()">Unlock</button>
+      <button class="teal-btn" style="flex:1;" onclick="submitVerifyPin()">Reset Password</button>
       <button onclick="closeVerifyPinModal()" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px;border-radius:8px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;">Cancel</button>
     </div>
   </div>
@@ -541,7 +551,7 @@
 
 <!-- ══════ CHANGE REQUEST MODAL (Admin) ══════ -->
 <div id="change-req-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#0a1a18;border:1px solid var(--teal);border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:85vh;overflow-y:auto;">
+  <div style="background:var(--surface);border:1px solid var(--teal);border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:85vh;overflow-y:auto;">
     <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:6px;">Change Account</div>
     <div id="cr-username" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;"></div>
     <div style="display:flex;flex-direction:column;gap:10px;">
@@ -577,7 +587,7 @@
 
 <!-- ══════ NOTIFICATION PANEL ══════ -->
 <div id="notif-panel" style="display:none;position:fixed;top:60px;right:16px;z-index:1000;width:340px;max-width:92vw;
-     max-height:70vh;overflow-y:auto;background:#0a1a18;border:1px solid var(--teal);border-radius:14px;
+     max-height:70vh;overflow-y:auto;background:var(--surface);border:1px solid var(--teal);border-radius:14px;
      box-shadow:0 12px 40px rgba(0,0,0,0.6);">
   <div style="padding:14px 16px;border-bottom:1px solid var(--border);font-family:'Orbitron',monospace;font-size:13px;color:var(--teal);letter-spacing:1px;">
     🔔 Notifications
@@ -657,6 +667,10 @@
         <span class="field-label">Theme</span>
         <button class="teal-btn" style="width:fit-content;" id="settings-theme-value" onclick="cycleTheme()">Dark (Teal)</button>
       </div>
+      <div class="field-group">
+        <span class="field-label">Appearance</span>
+        <button class="teal-btn" style="width:fit-content;" id="settings-mode-value" onclick="cycleMode()">🌙 Dark Mode</button>
+      </div>
       <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="logout()">
         <i class="fa-solid fa-right-from-bracket"></i> Logout
       </button>
@@ -712,7 +726,7 @@
 
 <!-- ══════ RETURN CONFIRMATION MODAL ══════ -->
 <div id="return-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center;">
-  <div style="background:#0a1a18;border:1px solid var(--teal,#00bcd4);border-radius:16px;padding:28px;width:380px;max-width:95vw;">
+  <div style="background:var(--surface);border:1px solid var(--teal,#00bcd4);border-radius:16px;padding:28px;width:380px;max-width:95vw;">
     <div style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal,#00bcd4);margin-bottom:18px;letter-spacing:1px;">
       ↩ RETURN ASSET
     </div>
