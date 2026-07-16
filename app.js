@@ -504,7 +504,7 @@ async function loadAssets() {
       assets = raw.map(a => ({
         id:        a.AssetID,
         name:      `${a.Brand} ${a.Model}`,
-        status:    (a.Status || 'available').toLowerCase().replace(' ', '-'),
+        status:    a.Status === 'In Service' ? 'service' : (a.Status || 'available').toLowerCase().replace(' ', '-'),
         serial:    a.SerialNumber,
         desc:      `${a.Brand} ${a.Model}`,
         dailyCost: parseFloat(a.DailyCost) || 0,
