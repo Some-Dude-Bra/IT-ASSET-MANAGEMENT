@@ -740,14 +740,15 @@ async function renderBorrowHistory() {
 // ─── MAINTENANCE ─────────────────────────────────────────────────────────────
 function renderMaintenance() {
   const tbody = document.getElementById('maintenance-tbody');
-  tbody.innerHTML = assets.map(a => `
+  const inService = assets.filter(a => a.status === 'service');
+  tbody.innerHTML = inService.length ? inService.map(a => `
     <tr>
       <td>${a.id}</td>
       <td>${a.name}</td>
       <td>${statusHtml(a.status)}</td>
-      <td><button class="teal-btn" onclick="openRepair(${a.id})" ${a.status === 'service' ? '' : 'style="opacity:0.4"'}>Repair</button></td>
+      <td><button class="teal-btn" onclick="openRepair(${a.id})">Repair</button></td>
     </tr>
-  `).join('');
+  `).join('') : `<tr><td colspan="4" style="color:var(--muted);padding:20px;text-align:center;">No assets currently in service.</td></tr>`;
   document.getElementById('repair-detail').style.display = 'none';
 }
 
