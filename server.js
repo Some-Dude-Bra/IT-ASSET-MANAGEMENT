@@ -96,13 +96,13 @@ function initTables() {
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS PinHash VARCHAR(64) DEFAULT NULL',
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS PinSalt VARCHAR(32) DEFAULT NULL',
     ].forEach(sql => db.query(sql, () => {}));
-    // Seed default demo users — clearance scale: 1=Student, 2=Employee, 3=IT Department, 5=Admin
+    // Seed default demo users — clearance scale: 1=Student, 2=Employee, 3=Maintenance, 4=Manager, 5=Admin
     // Password for every seeded account is "password" (hashed below) — this is a demo/class project.
     const DEMO_USERS = [
       ['tony.stark',  'Tony Stark',  5, 'Admin'],
-      ['bruce.wayne', 'Bruce Wayne', 3, 'IT Department'],
+      ['bruce.wayne', 'Bruce Wayne', 4, 'Manager'],
       ['tim.drake',   'Tim Drake',   2, 'Employee'],
-      ['jason.todd',  'Jason Todd',  1, 'Student'],
+      ['jason.todd',  'Jason Todd',  3, 'Maintenance'],
     ];
     // Insert any demo account that's missing — this runs every startup, not just
     // on a brand-new DB, so upgrading an existing install (which already had its
@@ -165,7 +165,43 @@ function initTables() {
 
   runQ('ALTER TABLE BorrowLog ADD COLUMN IF NOT EXISTS ReturnedBy VARCHAR(50) DEFAULT NULL', 'BorrowLog ReturnedBy');
 
-  // ── MaintenanceNotes table (one editable notes field per asset) ───────────
+  // ── BorrowRequests (Employee submits → IT/Admin approves or denies) ──────────
+  runQ(`CREATE TABLE IF NOT EXISTS BorrowRequests (
+    RequestID   INT AUTO_INCREMENT PRIMARY KEY,
+    AssetID     INT         NOT NULL,
+    RequestedBy VARCHAR(50) NOT NULL,
+    DueDate     DATE,
+    Status      VARCHAR(20) DEFAULT 'Pending',
+    ReviewedBy  VARCHAR(50) DEFAULT NULL,
+    ReviewedAt  DATETIME    DEFAULT NULL,
+    DenyReason  VARCHAR(255) DEFAULT NULL,
+    CreatedAt   DATETIME    DEFAULT CURRENT_TIMESTAMP
+  )`, 'BorrowRequests table');
+
+  // ── ReturnRequests (Employee submits → IT/Admin approves or denies) ──────────
+  runQ(`CREATE TABLE IF NOT EXISTS ReturnRequests (
+    RequestID   INT AUTO_INCREMENT PRIMARY KEY,
+    LogID       INT         NOT NULL,
+    RequestedBy VARCHAR(50) NOT NULL,
+    Status      VARCHAR(20) DEFAULT 'Pending',
+    ReviewedBy  VARCHAR(50) DEFAULT NULL,
+    ReviewedAt  DATETIME    DEFAULT NULL,
+    DenyReason  VARCHAR(255) DEFAULT NULL,
+    CreatedAt   DATETIME    DEFAULT CURRENT_TIMESTAMP
+  )`, 'ReturnRequests table');
+
+  // ── MaintenanceLogs — full log entries per asset ──────────────────────────────
+  runQ(`CREATE TABLE IF NOT EXISTS MaintenanceLogs (
+    EntryID     INT AUTO_INCREMENT PRIMARY KEY,
+    AssetID     INT          NOT NULL,
+    EntryType   VARCHAR(30)  DEFAULT 'note',
+    Note        TEXT         NOT NULL,
+    LoggedBy    VARCHAR(50)  NOT NULL,
+    CreatedAt   DATETIME     DEFAULT CURRENT_TIMESTAMP
+  )`, 'MaintenanceLogs table');
+
+  // ── WalletTransactions extended with method field ─────────────────────────────
+  runQ('ALTER TABLE WalletLog ADD COLUMN IF NOT EXISTS Method VARCHAR(50) DEFAULT NULL', 'WalletLog Method column');
   runQ(`CREATE TABLE IF NOT EXISTS MaintenanceNotes (
     AssetID   INT PRIMARY KEY,
     Notes     TEXT,
@@ -199,11 +235,11 @@ function initTables() {
 // ─── CLEARANCE LEVELS ────────────────────────────────────────────────────────
 // 1 = Student   (view only, cannot borrow)
 // 2 = Employee  (borrow / return)
-// 3 = IT Department (returns, borrow history, maintenance log, account requests)
-// 4 = IT Department (legacy — treated same as level 3)
+// 3 = Maintenance (maintenance log + asset management + repair)
+// 4 = Manager   (everything except create/ban accounts)
 // 5 = Admin     (everything)
-const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
-const ROLE_NAMES = { 1: 'Student', 2: 'Employee', 3: 'IT Department', 4: 'IT Department', 5: 'Admin' };
+const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, IT: 3, MANAGER: 4, ADMIN: 5 };
+const ROLE_NAMES = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
 
 // Simple header-based level gate. The frontend sends the acting user's level in
 // the 'x-user-level' header (set automatically by app.js on every request once logged in).
@@ -313,7 +349,7 @@ app.post('/unban', requireLevel(CLEARANCE.ADMIN), (req, res) => {
 });
 
 // ── WALLET ────────────────────────────────────────────────────────────────────
-app.get('/wallets', requireLevel(CLEARANCE.MANAGER), (_req, res) => {
+app.get('/wallets', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
   q('SELECT username,fullName,role,level,wallet FROM Users ORDER BY username', [], (err, rows) => {
     if (err) return res.status(500).json({ message: err.message });
     res.json(rows);
@@ -335,7 +371,7 @@ app.get('/wallet/:username/history', (req, res) => {
     });
 });
 
-app.post('/wallet/add', requireLevel(CLEARANCE.MANAGER), (req, res) => {
+app.post('/wallet/add', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   const { username, amount, note } = req.body;
   const amt = parseFloat(amount);
   if (!username || !amt || amt <= 0) return res.status(400).json({ message: 'username and positive amount required' });
@@ -349,7 +385,7 @@ app.post('/wallet/add', requireLevel(CLEARANCE.MANAGER), (req, res) => {
   });
 });
 
-app.post('/wallet/deduct', requireLevel(CLEARANCE.MANAGER), (req, res) => {
+app.post('/wallet/deduct', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   const { username, amount, note } = req.body;
   const amt = parseFloat(amount);
   if (!username || !amt || amt <= 0) return res.status(400).json({ message: 'username and positive amount required' });
@@ -394,7 +430,7 @@ app.get('/assets', (req, res) => {
 });
 
 // Save/update repair notes for an asset — Maintenance clearance (level 3) or above
-app.patch('/assets/:id/notes', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
+app.patch('/assets/:id/notes', requireLevel(CLEARANCE.IT), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   const notes   = (req.body.notes || '').toString();
   const updatedBy = req.body.updatedBy || null;
@@ -407,7 +443,7 @@ app.patch('/assets/:id/notes', requireLevel(CLEARANCE.MAINTENANCE), (req, res) =
 });
 
 // Adding/editing assets requires Maintenance clearance (level 3) or above
-app.post('/assets', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
+app.post('/assets', requireLevel(CLEARANCE.IT), (req, res) => {
   const { brand, model, serialNumber, category, status, description, dailyCost } = req.body;
   if (!brand || !model || !serialNumber) return res.status(400).json({ message: 'brand, model, serialNumber required' });
   const catName = category || 'Other';
@@ -429,7 +465,7 @@ app.post('/assets', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
   });
 });
 
-app.patch('/assets/:id/cost', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
+app.patch('/assets/:id/cost', requireLevel(CLEARANCE.IT), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   const cost    = parseFloat(req.body.dailyCost) || 0;
   q('UPDATE HardwareInventory SET DailyCost=? WHERE AssetID=?', [cost, assetId], (err) => {
@@ -444,7 +480,7 @@ app.patch('/assets/:id/cost', requireLevel(CLEARANCE.MAINTENANCE), (req, res) =>
 // updated its own in-memory copy, so the old status came right back on the
 // next reload from the DB.
 const STATUS_MAP = { available: 'Available', unavailable: 'Unavailable', service: 'In Service' };
-app.patch('/assets/:id/status', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
+app.patch('/assets/:id/status', requireLevel(CLEARANCE.IT), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   const status  = STATUS_MAP[(req.body.status || '').toLowerCase()];
   if (!status) return res.status(400).json({ message: 'status must be one of: available, unavailable, service' });
@@ -455,7 +491,7 @@ app.patch('/assets/:id/status', requireLevel(CLEARANCE.MAINTENANCE), (req, res) 
   });
 });
 
-app.post('/assets/:id/photo', requireLevel(CLEARANCE.MAINTENANCE), upload.single('photo'), (req, res) => {
+app.post('/assets/:id/photo', requireLevel(CLEARANCE.IT), upload.single('photo'), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   if (!req.file) return res.status(400).json({ message: 'No file provided' });
   const photoPath = req.file.filename;
@@ -471,7 +507,7 @@ app.post('/assets/:id/photo', requireLevel(CLEARANCE.MAINTENANCE), upload.single
   });
 });
 
-app.delete('/assets/:id/photo', requireLevel(CLEARANCE.MAINTENANCE), (req, res) => {
+app.delete('/assets/:id/photo', requireLevel(CLEARANCE.IT), (req, res) => {
   const assetId = parseInt(req.params.id, 10);
   q('SELECT PhotoPath FROM HardwareInventory WHERE AssetID=?', [assetId], (err, rows) => {
     if (err || !rows.length) return res.status(404).json({ message: 'Asset not found' });
@@ -890,7 +926,7 @@ app.patch('/accounts/:username', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   }
 });
 
-app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
+app.patch('/employees/:id', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   const empId = parseInt(req.params.id, 10);
   const { firstName, lastName, department, email } = req.body;
   q('SELECT EmployeeID FROM Employees WHERE EmployeeID=?', [empId], (sErr, rows) => {
@@ -913,7 +949,7 @@ app.patch('/employees/:id', requireLevel(CLEARANCE.MANAGER), (req, res) => {
 
 // Adding employees requires Manager clearance (level 4) or above.
 // Every new employee automatically gets a linked login account (default clearance: Employee).
-app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
+app.post('/employees', requireLevel(CLEARANCE.ADMIN), (req, res) => {
   const { firstName, lastName, department, jobTitle, email, photoData, photoMime } = req.body;
   if (!firstName || !lastName) return res.status(400).json({ message: 'firstName and lastName required' });
 
@@ -959,6 +995,254 @@ app.post('/employees', requireLevel(CLEARANCE.MANAGER), (req, res) => {
     });
 });
 // ─── GLOBAL ERROR HANDLER ────────────────────────────────────────────────────
+// ── BORROW REQUESTS (Employee requests → IT/Admin approves/denies) ─────────────
+// Employee submits a borrow request instead of directly borrowing
+app.post('/borrow-requests', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
+  const { assetIds, requestedBy, dueDate } = req.body;
+  if (!assetIds?.length || !requestedBy) return res.status(400).json({ message: 'assetIds and requestedBy required' });
+  const errors = [];
+  let done = 0;
+  assetIds.forEach(id => {
+    q('SELECT Status FROM HardwareInventory WHERE AssetID=?', [id], (sErr, rows) => {
+      if (sErr || !rows.length) { errors.push(`Asset ${id} not found`); }
+      else if (rows[0].Status !== 'Available') { errors.push(`Asset ${id} is not available (${rows[0].Status})`); }
+      else {
+        q('INSERT INTO BorrowRequests (AssetID,RequestedBy,DueDate) VALUES (?,?,?)',
+          [id, requestedBy, dueDate||null], (iErr) => { if (iErr) errors.push(iErr.message); });
+      }
+      done++;
+      if (done === assetIds.length) {
+        if (errors.length) return res.status(400).json({ message: errors.join(', ') });
+        res.status(201).json({ message: 'Borrow request(s) submitted for approval' });
+      }
+    });
+  });
+});
+
+// Get all pending borrow requests (IT + Admin)
+app.get('/borrow-requests', requireLevel(CLEARANCE.IT), (_req, res) => {
+  q(`SELECT br.RequestID, br.AssetID, br.RequestedBy, br.DueDate, br.Status,
+            br.ReviewedBy, br.ReviewedAt, br.DenyReason, br.CreatedAt,
+            hi.Brand, hi.Model, hi.SerialNumber
+     FROM BorrowRequests br
+     JOIN HardwareInventory hi ON hi.AssetID = br.AssetID
+     ORDER BY (br.Status='Pending') DESC, br.CreatedAt DESC`,
+    [], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// Get this user's own borrow requests
+app.get('/borrow-requests/mine/:username', (req, res) => {
+  q(`SELECT br.RequestID, br.AssetID, br.DueDate, br.Status, br.ReviewedBy,
+            br.ReviewedAt, br.DenyReason, br.CreatedAt, hi.Brand, hi.Model
+     FROM BorrowRequests br
+     JOIN HardwareInventory hi ON hi.AssetID = br.AssetID
+     WHERE br.RequestedBy=?
+     ORDER BY br.CreatedAt DESC LIMIT 50`,
+    [req.params.username], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// IT/Admin approves or denies a borrow request
+app.patch('/borrow-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
+  const reqId  = parseInt(req.params.id, 10);
+  const { action, reviewedBy, denyReason } = req.body;
+  if (!['approve','deny'].includes(action)) return res.status(400).json({ message: 'action must be approve or deny' });
+
+  q('SELECT * FROM BorrowRequests WHERE RequestID=? AND Status=?', [reqId, 'Pending'], (err, rows) => {
+    if (err || !rows.length) return res.status(404).json({ message: 'Pending request not found' });
+    const br = rows[0];
+
+    if (action === 'deny') {
+      q('UPDATE BorrowRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW(), DenyReason=? WHERE RequestID=?',
+        ['Denied', reviewedBy||'IT', denyReason||'Request denied', reqId], (uErr) => {
+          if (uErr) return res.status(500).json({ message: uErr.message });
+          res.json({ message: 'Borrow request denied' });
+        });
+      return;
+    }
+
+    // Approve: check asset is still available then create the borrow
+    q('SELECT Status, DailyCost FROM HardwareInventory WHERE AssetID=?', [br.AssetID], (sErr, aRows) => {
+      if (sErr || !aRows.length) return res.status(404).json({ message: 'Asset not found' });
+      if (aRows[0].Status !== 'Available') return res.status(409).json({ message: 'Asset is no longer available' });
+      const cost = parseFloat(aRows[0].DailyCost) || 0;
+      q('INSERT INTO BorrowLog (AssetID,BorrowedBy,DueDate,DailyCost) VALUES (?,?,?,?)',
+        [br.AssetID, br.RequestedBy, br.DueDate, cost], (iErr) => {
+          if (iErr) return res.status(500).json({ message: iErr.message });
+          q("UPDATE HardwareInventory SET Status='In Use', UpdatedAt=NOW() WHERE AssetID=?", [br.AssetID], () => {});
+          q('UPDATE BorrowRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW() WHERE RequestID=?',
+            ['Approved', reviewedBy||'IT', reqId], () => {});
+          res.json({ message: 'Borrow request approved — asset is now In Use' });
+        });
+    });
+  });
+});
+
+// ── RETURN REQUESTS (Employee requests → IT/Admin approves/denies) ──────────────
+// Employee submits a return request
+app.post('/return-requests', requireLevel(CLEARANCE.EMPLOYEE), (req, res) => {
+  const { logId, requestedBy } = req.body;
+  if (!logId || !requestedBy) return res.status(400).json({ message: 'logId and requestedBy required' });
+  q('SELECT * FROM BorrowLog WHERE LogID=? AND Status=? AND BorrowedBy=?', [logId, 'Active', requestedBy], (err, rows) => {
+    if (err || !rows.length) return res.status(404).json({ message: 'Active borrow record not found or not yours' });
+    // Check no pending return request already exists
+    q('SELECT RequestID FROM ReturnRequests WHERE LogID=? AND Status=?', [logId, 'Pending'], (cErr, existing) => {
+      if (existing?.length) return res.status(409).json({ message: 'A return request for this item is already pending' });
+      q('INSERT INTO ReturnRequests (LogID,RequestedBy) VALUES (?,?)', [logId, requestedBy], (iErr) => {
+        if (iErr) return res.status(500).json({ message: iErr.message });
+        res.status(201).json({ message: 'Return request submitted for approval' });
+      });
+    });
+  });
+});
+
+// Get all pending return requests (IT + Admin)
+app.get('/return-requests', requireLevel(CLEARANCE.IT), (_req, res) => {
+  q(`SELECT rr.RequestID, rr.LogID, rr.RequestedBy, rr.Status,
+            rr.ReviewedBy, rr.ReviewedAt, rr.DenyReason, rr.CreatedAt,
+            bl.AssetID, bl.BorrowedAt, bl.DueDate, bl.DailyCost,
+            hi.Brand, hi.Model
+     FROM ReturnRequests rr
+     JOIN BorrowLog bl ON bl.LogID = rr.LogID
+     JOIN HardwareInventory hi ON hi.AssetID = bl.AssetID
+     ORDER BY (rr.Status='Pending') DESC, rr.CreatedAt DESC`,
+    [], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// Get this user's own return requests
+app.get('/return-requests/mine/:username', (req, res) => {
+  q(`SELECT rr.RequestID, rr.LogID, rr.Status, rr.ReviewedBy,
+            rr.ReviewedAt, rr.DenyReason, rr.CreatedAt,
+            hi.Brand, hi.Model
+     FROM ReturnRequests rr
+     JOIN BorrowLog bl ON bl.LogID = rr.LogID
+     JOIN HardwareInventory hi ON hi.AssetID = bl.AssetID
+     WHERE rr.RequestedBy=?
+     ORDER BY rr.CreatedAt DESC LIMIT 50`,
+    [req.params.username], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// IT/Admin approves or denies a return request
+app.patch('/return-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
+  const reqId = parseInt(req.params.id, 10);
+  const { action, reviewedBy, denyReason } = req.body;
+  if (!['approve','deny'].includes(action)) return res.status(400).json({ message: 'action must be approve or deny' });
+
+  q('SELECT * FROM ReturnRequests WHERE RequestID=? AND Status=?', [reqId, 'Pending'], (err, rows) => {
+    if (err || !rows.length) return res.status(404).json({ message: 'Pending return request not found' });
+    const rr = rows[0];
+
+    if (action === 'deny') {
+      q('UPDATE ReturnRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW(), DenyReason=? WHERE RequestID=?',
+        ['Denied', reviewedBy||'IT', denyReason||'Request denied', reqId], (uErr) => {
+          if (uErr) return res.status(500).json({ message: uErr.message });
+          res.json({ message: 'Return request denied' });
+        });
+      return;
+    }
+
+    // Approve: process the actual return with charge calculation
+    q('SELECT * FROM BorrowLog WHERE LogID=? AND Status=?', [rr.LogID, 'Active'], (bErr, bRows) => {
+      if (bErr || !bRows.length) return res.status(404).json({ message: 'Active borrow record not found' });
+      const log        = bRows[0];
+      const borrowedAt = new Date(log.BorrowedAt);
+      const now        = new Date();
+      const days       = Math.max(1, Math.ceil((now - borrowedAt) / (1000 * 60 * 60 * 24)));
+      const charge     = parseFloat((days * parseFloat(log.DailyCost)).toFixed(2));
+
+      q('UPDATE BorrowLog SET ReturnedAt=NOW(), ReturnedBy=?, TotalCharged=?, Status=? WHERE LogID=?',
+        [reviewedBy||'IT', charge, 'Returned', rr.LogID], (uErr) => {
+          if (uErr) return res.status(500).json({ message: uErr.message });
+          if (charge > 0) {
+            q('UPDATE Users SET wallet=GREATEST(0,wallet-?) WHERE username=?', [charge, log.BorrowedBy], () => {});
+            q('INSERT INTO WalletLog (Username,Amount,Type,Note) VALUES (?,?,?,?)',
+              [log.BorrowedBy, charge, 'debit', `Return approved: Asset #${log.AssetID} (${days}d × ₱${log.DailyCost}/day)`], () => {});
+          }
+          q("UPDATE HardwareInventory SET Status='Available', UpdatedAt=NOW() WHERE AssetID=?", [log.AssetID], () => {});
+          q('UPDATE ReturnRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW() WHERE RequestID=?',
+            ['Approved', reviewedBy||'IT', reqId], () => {});
+          res.json({ message: 'Return approved', totalCharge: charge, days, borrowedBy: log.BorrowedBy });
+        });
+    });
+  });
+});
+
+// ── MAINTENANCE LOGS ──────────────────────────────────────────────────────────
+// Get all log entries for a specific asset
+app.get('/assets/:id/maintenance-logs', (req, res) => {
+  const assetId = parseInt(req.params.id, 10);
+  q('SELECT EntryID, EntryType, Note, LoggedBy, CreatedAt FROM MaintenanceLogs WHERE AssetID=? ORDER BY CreatedAt DESC',
+    [assetId], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
+// Add a maintenance log entry (IT + Admin only)
+app.post('/assets/:id/maintenance-logs', requireLevel(CLEARANCE.IT), (req, res) => {
+  const assetId = parseInt(req.params.id, 10);
+  const { note, entryType, loggedBy } = req.body;
+  if (!note?.trim()) return res.status(400).json({ message: 'note is required' });
+  q('INSERT INTO MaintenanceLogs (AssetID,EntryType,Note,LoggedBy) VALUES (?,?,?,?)',
+    [assetId, entryType||'note', note.trim(), loggedBy||'IT'], (err, result) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.status(201).json({ message: 'Log entry added', entryId: result.insertId });
+    });
+});
+
+// ── WALLET CASH IN / CASH OUT (self-service) ──────────────────────────────────
+// Any logged-in user can request a cash-in or cash-out for their own wallet
+app.post('/wallet/cashin', (req, res) => {
+  const { username, amount, method, note } = req.body;
+  const amt = parseFloat(amount);
+  if (!username || !amt || amt <= 0) return res.status(400).json({ message: 'username and positive amount required' });
+  q('UPDATE Users SET wallet=wallet+? WHERE username=?', [amt, username], (err) => {
+    if (err) return res.status(500).json({ message: err.message });
+    q('INSERT INTO WalletLog (Username,Amount,Type,Note,Method) VALUES (?,?,?,?,?)',
+      [username, amt, 'credit', note||'Cash in', method||null], () => {});
+    q('SELECT wallet FROM Users WHERE username=?', [username], (e2, r2) => {
+      res.json({ message: 'Cash in successful', newBalance: parseFloat(r2[0]?.wallet ?? 0) });
+    });
+  });
+});
+
+app.post('/wallet/cashout', (req, res) => {
+  const { username, amount, method, note } = req.body;
+  const amt = parseFloat(amount);
+  if (!username || !amt || amt <= 0) return res.status(400).json({ message: 'username and positive amount required' });
+  q('SELECT wallet FROM Users WHERE username=?', [username], (err, rows) => {
+    if (err || !rows.length) return res.status(404).json({ message: 'User not found' });
+    if (parseFloat(rows[0].wallet) < amt) return res.status(400).json({ message: 'Insufficient balance' });
+    q('UPDATE Users SET wallet=wallet-? WHERE username=?', [amt, username], (err2) => {
+      if (err2) return res.status(500).json({ message: err2.message });
+      q('INSERT INTO WalletLog (Username,Amount,Type,Note,Method) VALUES (?,?,?,?,?)',
+        [username, amt, 'debit', note||'Cash out', method||null], () => {});
+      q('SELECT wallet FROM Users WHERE username=?', [username], (e3, r3) => {
+        res.json({ message: 'Cash out successful', newBalance: parseFloat(r3[0]?.wallet ?? 0) });
+      });
+    });
+  });
+});
+
+app.get('/wallet/:username/history', (req, res) => {
+  q('SELECT TxID,Amount,Type,Note,Method,CreatedAt FROM WalletLog WHERE Username=? ORDER BY CreatedAt DESC LIMIT 50',
+    [req.params.username], (err, rows) => {
+      if (err) return res.status(500).json({ message: err.message });
+      res.json(rows);
+    });
+});
+
 app.use((err, req, res, next) => {
   console.error('─── ERROR ──', req.method, req.originalUrl);
   console.error(err.message);

@@ -14,25 +14,12 @@ function authFetch(url, options = {}) {
 }
 
 // ─── CLEARANCE LEVELS ────────────────────────────────────────────────────────
-// 1 = Student       — Departments + Settings only
-// 2 = Employee      — + Asset Inventory, own Wallet view
-// 3 = IT Department — + Return Assets, Borrow History, Maintenance Log, Account Requests
-// 5 = Admin         — everything (Manage Assets, Manage Employees, User Wallets, Accounts, Ban List)
-//
-// NOTE: level 4 (Manager) is no longer used as a role in the UI.
-// The old 3-tier (Maintenance/Manager) is collapsed:
-//   IT Dept = level 3  (was Maintenance+Manager combined minus account mgmt)
-//   Admin   = level 5  (unchanged)
-const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, IT: 3, MANAGER: 4, ADMIN: 5 };
-
-// Human-readable role labels shown in profile / settings
-const ROLE_LABELS = {
-  1: 'Student',
-  2: 'Employee',
-  3: 'IT Department',
-  4: 'IT Department',   // legacy level-4 accounts display as IT Dept
-  5: 'Admin',
-};
+// 1 = Student      — view only, cannot borrow
+// 2 = Employee     — borrow / return assets
+// 3 = Maintenance  — maintenance log + asset management + repair
+// 4 = Manager      — everything except create/ban accounts
+// 5 = Admin        — everything
+const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
 
 // ─── THEMES ──────────────────────────────────────────────────────────────────
 // Themes are scoped PER USER (keyed by username), not to the machine/browser —
@@ -247,24 +234,17 @@ const AI_JOKES = [
 ];
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
-// Minimum clearance level required to view each page.
-// Pages not listed here are open to any logged-in user (login + banned pages are always open).
-//
-// Role → page access summary:
-//   Student (1)      : inventory (view only), departments, settings
-//   Employee (2)     : + cart/borrow, own wallet view
-//   IT Dept (3/4)    : + returns, borrow-history, maintenance, account-requests
-//   Admin (5)        : + manage-assets, employees, wallets (all), accounts, ban-list
+// Minimum clearance level required to view each page. Pages not listed are open to any logged-in user.
 const PAGE_CLEARANCE = {
-  'returns':          CLEARANCE.IT,
-  'borrow-history':   CLEARANCE.IT,
-  'maintenance':      CLEARANCE.IT,
-  'manage-assets':    CLEARANCE.ADMIN,
-  'employees':        CLEARANCE.ADMIN,
-  'wallets':          CLEARANCE.EMPLOYEE,   // all roles see this page; content is filtered per role
-  'accounts':         CLEARANCE.ADMIN,
-  'account-requests': CLEARANCE.IT,
-  'ban-list':         CLEARANCE.ADMIN,
+  'returns':         CLEARANCE.EMPLOYEE,
+  'borrow-history':  CLEARANCE.ADMIN,
+  'maintenance':     CLEARANCE.IT,
+  'manage-assets':   CLEARANCE.IT,
+  'employees':       CLEARANCE.ADMIN,
+  'wallets':         CLEARANCE.ADMIN,
+  'accounts':        CLEARANCE.ADMIN,
+  'account-requests':CLEARANCE.ADMIN,
+  'ban-list':        CLEARANCE.ADMIN,
 };
 
 function nav(page) {
@@ -360,11 +340,12 @@ function logout() {
 // ─── PROFILE ─────────────────────────────────────────────────────────────────
 function renderProfile() {
   if (!currentUser) return;
+  const lvlLabels = { 1: 'Level 1 — Student', 2: 'Level 2 — Employee', 3: 'Level 3 — Maintenance', 4: 'Level 4 — Manager', 5: 'Level 5 — Admin' };
   document.getElementById('profile-name').textContent     = currentUser.fullName;
   document.getElementById('profile-username').textContent = currentUser.username;
   document.getElementById('profile-fullname').textContent = currentUser.fullName;
-  document.getElementById('profile-role').textContent     = ROLE_LABELS[currentUser.level] || currentUser.role;
-  document.getElementById('profile-level').textContent    = ROLE_LABELS[currentUser.level] || 'Level ' + currentUser.level;
+  document.getElementById('profile-role').textContent     = currentUser.role;
+  document.getElementById('profile-level').textContent    = lvlLabels[currentUser.level] || 'Level ' + currentUser.level;
   document.getElementById('profile-wallet').textContent   = '₱' + (currentUser.wallet || 0).toFixed(2);
 }
 
@@ -374,24 +355,19 @@ function renderDashboard() {
   const lvl = currentUser.level;
   document.getElementById('inv-username').textContent  = currentUser.fullName;
 
-  // ── Dashboard tiles per role ──────────────────────────────────────────────
-  // Student (1)   : Asset Inventory (view only), Departments, Settings
-  // Employee (2)  : + Wallet (own balance only)
-  // IT Dept (3/4) : + Return Assets, Borrow History, Maintenance Log, Account Requests
-  // Admin (5)     : + Manage Assets, Manage Employees, User Wallets (all), Accounts, Ban List
   const icons = [
-    { icon: 'fa-solid fa-laptop',             label: 'Asset Inventory',    page: 'inventory',        minLevel: CLEARANCE.STUDENT },
-    { icon: 'fa-solid fa-rotate-left',        label: 'Return Assets',      page: 'returns',          minLevel: CLEARANCE.IT },
-    { icon: 'fa-solid fa-clock-rotate-left',  label: 'Borrow History',     page: 'borrow-history',   minLevel: CLEARANCE.IT },
-    { icon: 'fa-solid fa-screwdriver-wrench', label: 'Maintenance Log',    page: 'maintenance',      minLevel: CLEARANCE.IT },
-    { icon: 'fa-solid fa-boxes-stacked',      label: 'Manage Assets',      page: 'manage-assets',    minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-users',              label: 'Manage Employees',   page: 'employees',        minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-building',           label: 'Departments',        page: 'departments',      minLevel: CLEARANCE.STUDENT },
-    { icon: 'fa-solid fa-wallet',             label: 'Wallet',             page: 'wallets',          minLevel: CLEARANCE.EMPLOYEE },
-    { icon: 'fa-solid fa-key',                label: 'Accounts',           page: 'accounts',         minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-inbox',              label: 'Account Requests',   page: 'account-requests', minLevel: CLEARANCE.IT },
-    { icon: 'fa-solid fa-ban',                label: 'Ban List',           page: 'ban-list',         minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-gears',              label: 'Settings',           page: 'settings',         minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-laptop',             label: 'Asset Inventory',   page: 'inventory',       minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-rotate-left',        label: 'Return Assets',     page: 'returns',         minLevel: CLEARANCE.EMPLOYEE },
+    { icon: 'fa-solid fa-clock-rotate-left',  label: 'Borrow History',    page: 'borrow-history',  minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-screwdriver-wrench', label: 'Maintenance Log',   page: 'maintenance',     minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-boxes-stacked',      label: 'Manage Assets',     page: 'manage-assets',   minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-users',              label: 'Manage Employees',  page: 'employees',       minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-building',           label: 'Departments',       page: 'departments',     minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-wallet',             label: 'User Wallets',      page: 'wallets',         minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-key',                label: 'Accounts',          page: 'accounts',        minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-inbox',               label: 'Account Requests',  page: 'account-requests',minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-ban',                label: 'Ban List',          page: 'ban-list',        minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-gears',              label: 'Settings',          page: 'settings',        minLevel: CLEARANCE.STUDENT },
   ];
 
   const grid = document.getElementById('dashboard-grid');
@@ -499,8 +475,9 @@ function startNotifPolling() {
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
 function renderSettings() {
   if (!currentUser) return;
+  const lvlLabels = { 1: 'Level 1 — Student', 2: 'Level 2 — Employee', 3: 'Level 3 — Maintenance', 4: 'Level 4 — Manager', 5: 'Level 5 — Admin' };
   document.getElementById('settings-username').textContent = currentUser.fullName;
-  document.getElementById('settings-level').textContent    = ROLE_LABELS[currentUser.level] || 'Level ' + currentUser.level;
+  document.getElementById('settings-level').textContent    = lvlLabels[currentUser.level] || 'Level ' + currentUser.level;
   document.getElementById('settings-theme-value').textContent = THEMES[currentThemeName].label;
   document.getElementById('settings-mode-value').textContent  = MODES[currentModeName].label;
 }
@@ -617,59 +594,152 @@ function removeFromCart(id) {
 }
 
 async function borrowCart() {
-  if (cart.length === 0)                    { showNotif('Cart is empty'); return; }
-  if (!currentUser)                          { showNotif('Please log in'); return; }
+  if (cart.length === 0)   { showNotif('Cart is empty'); return; }
+  if (!currentUser)        { showNotif('Please log in'); return; }
   const rd = document.getElementById('return-date').value;
-  if (!rd)                                   { showNotif('Please set a return date'); return; }
+  if (!rd)                 { showNotif('Please set a return date'); return; }
+
+  // Employees and Students submit a REQUEST — IT Dept and Admin borrow directly
+  const isDirectBorrow = currentUser.level >= CLEARANCE.IT;
 
   try {
-    const res = await authFetch(`${API}/borrow`, {
+    const endpoint = isDirectBorrow ? `${API}/borrow` : `${API}/borrow-requests`;
+    const body     = isDirectBorrow
+      ? { assetIds: cart.map(a => a.id), borrowedBy: currentUser.username, dueDate: rd }
+      : { assetIds: cart.map(a => a.id), requestedBy: currentUser.username, dueDate: rd };
+
+    const res = await authFetch(endpoint, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assetIds: cart.map(a => a.id), borrowedBy: currentUser.username, dueDate: rd }),
+      body: JSON.stringify(body),
     });
+    const data = await res.json();
     if (res.ok) {
-      showNotif(`✓ ${cart.length} item(s) borrowed!`);
-      cart.forEach(item => { const a = assets.find(x => x.id === item.id); if (a) { a.status = 'unavailable'; } });
+      if (isDirectBorrow) {
+        showNotif(`✓ ${cart.length} item(s) borrowed successfully!`);
+        cart.forEach(item => { const a = assets.find(x => x.id === item.id); if (a) a.status = 'unavailable'; });
+      } else {
+        showNotif(`📋 Borrow request submitted! Waiting for IT/Admin approval.`);
+      }
       cart = []; notifCount = 0; updateAllNotifBadges();
       await loadAssets();
       nav('inventory');
     } else {
-      const data = await res.json();
-      showNotif('Borrow failed: ' + (data.message || 'Unknown error'));
+      showNotif('Failed: ' + (data.message || 'Unknown error'));
     }
-  } catch { showNotif('Server offline — borrow not saved'); }
+  } catch { showNotif('Server offline — request not saved'); }
 }
 
 // ─── RETURN ASSETS ───────────────────────────────────────────────────────────
+// Employees: see their own borrows + submit return requests
+// IT/Admin:  see ALL active borrows + approve/deny return requests
 async function renderReturns() {
-  const tbody = document.getElementById('returns-tbody');
+  const isApprover = currentUser && currentUser.level >= CLEARANCE.IT;
+  const tbody      = document.getElementById('returns-tbody');
+
+  // Show/hide the pending return requests section (IT/Admin only)
+  const pendingSection = document.getElementById('pending-return-requests-section');
+  if (pendingSection) pendingSection.style.display = isApprover ? 'block' : 'none';
+
   tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
+
   try {
     const res  = await fetch(`${API}/borrows/active`);
     let   rows = await res.json();
-    // Everyone — including Manager/Admin — only sees and returns their own
-    // borrowed items. Nobody can return an item someone else borrowed.
-    rows = rows.filter(r => r.BorrowedBy === currentUser?.username);
+
+    // Employees only see their own borrows
+    if (!isApprover) rows = rows.filter(r => r.BorrowedBy === currentUser?.username);
+
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">No assets currently borrowed by you.</td></tr>';
-      return;
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--muted);padding:20px;">${isApprover ? 'No active borrows.' : 'You have no borrowed assets.'}</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map(r => {
+        const borrowedDate = new Date(r.BorrowedAt).toLocaleDateString();
+        const dueDate      = r.DueDate ? new Date(r.DueDate).toLocaleDateString() : '—';
+        const isOverdue    = r.DueDate && new Date(r.DueDate) < new Date();
+        const isOwn        = r.BorrowedBy === currentUser?.username;
+        // Employees: "Request Return" button — IT/Admin: "Approve Return" button
+        const actionBtn = isOwn && !isApprover
+          ? `<button class="teal-btn" onclick="submitReturnRequest(${r.LogID}, '${r.Brand} ${r.Model}')">Request Return</button>`
+          : isApprover
+            ? `<button class="teal-btn" onclick="returnAsset(${r.LogID}, '${r.Brand} ${r.Model}', ${r.DailyCost})">Approve Return</button>`
+            : '—';
+        return `<tr ${isOverdue ? 'style="background:rgba(255,68,68,0.08);"' : ''}>
+          <td>${r.Brand} ${r.Model}<br><span style="font-size:11px;color:var(--muted);">ID: ${r.AssetID}</span></td>
+          <td>${r.BorrowedBy}</td>
+          <td>${borrowedDate}</td>
+          <td style="color:${isOverdue ? '#ff4444' : 'inherit'};">${dueDate}${isOverdue ? ' ⚠ Overdue' : ''}</td>
+          <td style="color:#00e5c8;">${peso(r.DailyCost)}/day</td>
+          <td>${actionBtn}</td>
+        </tr>`;
+      }).join('');
     }
-    tbody.innerHTML = rows.map(r => {
-      const borrowedDate = new Date(r.BorrowedAt).toLocaleDateString();
-      const dueDate      = r.DueDate ? new Date(r.DueDate).toLocaleDateString() : '—';
-      const isOverdue    = r.DueDate && new Date(r.DueDate) < new Date();
-      return `<tr ${isOverdue ? 'style="background:rgba(255,68,68,0.08);"' : ''}>
-        <td>${r.Brand} ${r.Model}<br><span style="font-size:11px;color:var(--muted);">ID: ${r.AssetID}</span></td>
-        <td>${r.BorrowedBy}</td>
-        <td>${borrowedDate}</td>
-        <td style="color:${isOverdue ? '#ff4444' : 'inherit'};">${dueDate}${isOverdue ? ' ⚠ Overdue' : ''}</td>
-        <td style="color:#00e5c8;">${peso(r.DailyCost)}/day</td>
-        <td><button class="teal-btn" onclick="returnAsset(${r.LogID}, '${r.Brand} ${r.Model}', ${r.DailyCost})">Return</button></td>
-      </tr>`;
-    }).join('');
-  } catch (err) {
+
+    // If IT/Admin: also load pending return requests
+    if (isApprover) await renderPendingReturnRequests();
+
+  } catch {
     tbody.innerHTML = '<tr><td colspan="6" style="color:#ff4444;padding:20px;">Failed to load — is the server running?</td></tr>';
   }
+}
+
+// Employee submits a return request
+async function submitReturnRequest(logId, assetName) {
+  if (!confirm(`Request to return "${assetName}"?\n\nIT/Admin will review and approve the return.`)) return;
+  try {
+    const res  = await authFetch(`${API}/return-requests`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logId, requestedBy: currentUser.username }),
+    });
+    const data = await res.json();
+    if (res.ok) { showNotif('📋 Return request submitted! Waiting for IT/Admin approval.'); renderReturns(); }
+    else showNotif('Failed: ' + (data.message || 'Unknown'));
+  } catch { showNotif('Server offline'); }
+}
+
+// IT/Admin sees and acts on pending return requests
+async function renderPendingReturnRequests() {
+  const container = document.getElementById('pending-return-requests-tbody');
+  if (!container) return;
+  try {
+    const res  = await authFetch(`${API}/return-requests`);
+    const rows = await res.json();
+    const pending = rows.filter(r => r.Status === 'Pending');
+    if (!pending.length) {
+      container.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:12px;">No pending return requests.</td></tr>';
+      return;
+    }
+    container.innerHTML = pending.map(r => `
+      <tr>
+        <td>${r.Brand} ${r.Model}</td>
+        <td>${r.RequestedBy}</td>
+        <td>${new Date(r.CreatedAt).toLocaleDateString()}</td>
+        <td style="color:#00e5c8;">${peso(r.DailyCost)}/day</td>
+        <td>
+          <button class="teal-btn" style="margin-right:6px;" onclick="reviewReturnRequest(${r.RequestID},'approve')">✓ Approve</button>
+          <button class="add-btn" onclick="reviewReturnRequest(${r.RequestID},'deny')">✕ Deny</button>
+        </td>
+      </tr>`).join('');
+  } catch { container.innerHTML = '<tr><td colspan="6" style="color:#ff4444;">Failed to load.</td></tr>'; }
+}
+
+async function reviewReturnRequest(requestId, action) {
+  const denyReason = action === 'deny' ? prompt('Reason for denial:') : null;
+  if (action === 'deny' && denyReason === null) return; // cancelled
+  try {
+    const res  = await authFetch(`${API}/return-requests/${requestId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, reviewedBy: currentUser.username, denyReason }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showNotif(action === 'approve'
+        ? `✓ Return approved! Charge: ${peso(data.totalCharge)} (${data.days} days)`
+        : '✕ Return request denied');
+      await loadAssets();
+      renderReturns();
+      refreshNotifications();
+    } else showNotif('Failed: ' + (data.message || 'Unknown'));
+  } catch { showNotif('Server offline'); }
 }
 
 // ─── RETURN MODAL ────────────────────────────────────────────────────────────
@@ -762,48 +832,92 @@ async function renderBorrowHistory() {
 
 // ─── MAINTENANCE ─────────────────────────────────────────────────────────────
 function renderMaintenance() {
-  const tbody = document.getElementById('maintenance-tbody');
+  const tbody     = document.getElementById('maintenance-tbody');
   const inService = assets.filter(a => a.status === 'service');
-  tbody.innerHTML = inService.length ? inService.map(a => `
-    <tr>
-      <td>${a.id}</td>
-      <td>${a.name}</td>
-      <td>${statusHtml(a.status)}</td>
-      <td><button class="teal-btn" onclick="openRepair(${a.id})">Repair</button></td>
-    </tr>
-  `).join('') : `<tr><td colspan="4" style="color:var(--muted);padding:20px;text-align:center;">No assets currently in service.</td></tr>`;
+  tbody.innerHTML = inService.length
+    ? inService.map(a => `
+      <tr>
+        <td>${a.id}</td>
+        <td>${a.name}</td>
+        <td>${statusHtml(a.status)}</td>
+        <td><button class="teal-btn" onclick="openRepair(${a.id})">View / Log</button></td>
+      </tr>`).join('')
+    : `<tr><td colspan="4" style="color:var(--muted);padding:20px;text-align:center;">No assets currently in service.</td></tr>`;
+
+  // Also show all assets for logging purposes (even if not in service)
+  const allTbody = document.getElementById('maintenance-all-tbody');
+  if (allTbody) {
+    allTbody.innerHTML = assets.filter(a => a.status !== 'service').map(a => `
+      <tr>
+        <td>${a.id}</td>
+        <td>${a.name}</td>
+        <td>${statusHtml(a.status)}</td>
+        <td><button class="add-btn" style="font-size:11px;" onclick="openRepair(${a.id})">Add Log</button></td>
+      </tr>`).join('');
+  }
   document.getElementById('repair-detail').style.display = 'none';
 }
 
-function openRepair(id) {
+async function openRepair(id) {
   if (!currentUser || currentUser.level < CLEARANCE.IT) { showNotif('⚠ IT Department clearance required'); return; }
   selectedAssetId = id;
   const asset = assets.find(a => a.id === id);
-  document.getElementById('repair-device-name').textContent = 'Device Name: ' + asset.name;
-  document.getElementById('repair-serial').textContent      = 'Serial Number: ' + asset.serial;
-  document.getElementById('repair-issue1').textContent  = asset.status === 'service' ? 'Device reported issues' : 'No issues reported';
-  document.getElementById('repair-issue2').textContent  = asset.borrowedBy ? asset.borrowedBy + ' reported this' : 'No additional notes';
-  document.getElementById('repair-notes-input').value   = asset.repairNotes || '';
-  document.getElementById('repair-detail').style.display = 'block';
+  document.getElementById('repair-device-name').textContent = 'Device: ' + asset.name;
+  document.getElementById('repair-serial').textContent      = 'Serial: ' + asset.serial;
+  document.getElementById('repair-issue1').textContent      = asset.status === 'service' ? '⚠ Device is currently In Service' : 'ℹ Device is not in service';
+  document.getElementById('repair-issue2').textContent      = asset.borrowedBy ? 'Reported by: ' + asset.borrowedBy : 'No reporter info';
+  document.getElementById('repair-notes-input').value       = '';
+  document.getElementById('repair-detail').style.display    = 'block';
   document.getElementById('repair-detail').scrollIntoView({ behavior: 'smooth' });
+
+  // Load maintenance log history for this asset
+  await loadMaintenanceLogs(id);
+}
+
+async function loadMaintenanceLogs(assetId) {
+  const logContainer = document.getElementById('maintenance-log-entries');
+  if (!logContainer) return;
+  logContainer.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">Loading logs…</div>';
+  try {
+    const res  = await authFetch(`${API}/assets/${assetId}/maintenance-logs`);
+    const rows = await res.json();
+    if (!rows.length) {
+      logContainer.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">No maintenance logs yet for this asset.</div>';
+      return;
+    }
+    logContainer.innerHTML = rows.map(entry => {
+      const typeColor = entry.EntryType === 'system' ? '#ff8800' : entry.EntryType === 'resolved' ? '#00e5c8' : '#b0b0b0';
+      const typeLabel = entry.EntryType === 'system' ? '⚙ SYSTEM' : entry.EntryType === 'resolved' ? '✓ RESOLVED' : '📝 NOTE';
+      return `
+        <div style="border-left:3px solid ${typeColor};padding:8px 12px;margin-bottom:8px;background:rgba(255,255,255,0.03);border-radius:0 8px 8px 0;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+            <span style="font-size:10px;color:${typeColor};font-family:'Orbitron',monospace;letter-spacing:1px;">${typeLabel}</span>
+            <span style="font-size:10px;color:var(--muted);">${new Date(entry.CreatedAt).toLocaleString()} · ${entry.LoggedBy}</span>
+          </div>
+          <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--text);">${entry.Note}</div>
+        </div>`;
+    }).join('');
+  } catch { logContainer.innerHTML = '<div style="color:#ff4444;font-size:12px;">Failed to load logs.</div>'; }
 }
 
 async function saveRepairNotes() {
   if (!currentUser || currentUser.level < CLEARANCE.IT) { showNotif('⚠ IT Department clearance required'); return; }
   const asset = assets.find(a => a.id === selectedAssetId);
   if (!asset) return;
-  const notes = document.getElementById('repair-notes-input').value;
+  const note = document.getElementById('repair-notes-input').value.trim();
+  if (!note) { showNotif('Please enter a note'); return; }
   try {
-    const res  = await authFetch(`${API}/assets/${asset.id}/notes`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notes, updatedBy: currentUser.username }),
+    const res  = await authFetch(`${API}/assets/${asset.id}/maintenance-logs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note, entryType: 'note', loggedBy: currentUser.username }),
     });
     const data = await res.json();
     if (res.ok) {
-      asset.repairNotes = notes;
-      showNotif('✓ Repair notes saved');
+      document.getElementById('repair-notes-input').value = '';
+      showNotif('✓ Maintenance log entry saved');
+      await loadMaintenanceLogs(selectedAssetId);
     } else { showNotif('Failed: ' + (data.message || 'Unknown')); }
-  } catch { showNotif('Server offline — notes not saved'); }
+  } catch { showNotif('Server offline — log not saved'); }
 }
 
 async function markAvailable() {
@@ -817,8 +931,13 @@ async function markAvailable() {
     });
     const data = await res.json();
     if (!res.ok) { showNotif('Failed: ' + (data.message || 'Unknown')); return; }
+    // Also log the resolution
+    await authFetch(`${API}/assets/${asset.id}/maintenance-logs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: 'Device marked as Available — maintenance resolved.', entryType: 'resolved', loggedBy: currentUser.username }),
+    });
     asset.status = 'available';
-    showNotif(`✓ ${asset.name} status updated to Available`);
+    showNotif(`✓ ${asset.name} marked Available — resolution logged`);
     document.getElementById('repair-detail').style.display = 'none';
     await loadAssets();
     renderMaintenance();
@@ -840,7 +959,7 @@ function renderManageAssets() {
       <td><button class="teal-btn" onclick="openAssetDetail(${a.id})">Monitor</button></td>
     </tr>
   `).join('');
-  document.getElementById('add-asset-section').style.display = lvl >= CLEARANCE.ADMIN ? 'block' : 'none';
+  document.getElementById('add-asset-section').style.display = lvl >= CLEARANCE.IT ? 'block' : 'none';
 }
 
 function openAssetDetail(id) {
@@ -1187,7 +1306,7 @@ async function saveChangeRequest() {
   const dept      = document.getElementById('cr-dept').value;
   const email     = document.getElementById('cr-email').value.trim();
   const level     = parseInt(document.getElementById('cr-level').value, 10);
-  const roles     = { 1: 'Student', 2: 'Employee', 3: 'IT Department', 4: 'IT Department', 5: 'Admin' };
+  const roles     = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
 
   try {
     if (employeeId) {
@@ -1404,32 +1523,23 @@ async function submitVerifyPin() {
   } catch { errEl.textContent = '⚠ Server offline'; }
 }
 
-// ─── WALLETS ─────────────────────────────────────────────────────────────────
-// Admin (5)       → sees ALL user wallets with Add/Remove controls
-// IT Dept (3/4)   → sees only their own wallet balance (read-only)
-// Employee (2)    → sees only their own wallet balance (read-only)
-// Student (1)     → no access (redirected by PAGE_CLEARANCE)
 async function renderWallets() {
   if (!currentUser) return;
-  const isAdmin = currentUser.level >= CLEARANCE.ADMIN;
-  const tbody   = document.getElementById('wallets-tbody');
-
-  // Show/hide the "Manage Wallet" column header depending on role
-  const manageHeader = document.getElementById('wallets-manage-header');
-  if (manageHeader) manageHeader.style.display = isAdmin ? '' : 'none';
-
-  // Show the page title/subtitle that reflects what the user sees
+  const isAdmin    = currentUser.level >= CLEARANCE.ADMIN;
+  const tbody      = document.getElementById('wallets-tbody');
+  const manageHdr  = document.getElementById('wallets-manage-header');
   const titleEl    = document.getElementById('wallets-page-title');
   const subtitleEl = document.getElementById('wallets-page-subtitle');
-  if (titleEl)    titleEl.textContent    = isAdmin ? 'User Wallets' : 'My Wallet';
-  if (subtitleEl) subtitleEl.textContent = isAdmin
-    ? 'Add or remove funds from any user account.'
-    : 'Your current wallet balance.';
 
-  tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>`;
+  if (manageHdr)  manageHdr.style.display  = isAdmin ? '' : 'none';
+  if (titleEl)    titleEl.textContent       = isAdmin ? 'User Wallets' : 'My Wallet';
+  if (subtitleEl) subtitleEl.textContent    = isAdmin
+    ? 'Manage funds for any user account.'
+    : 'Your current balance. Use Cash In / Cash Out to add or withdraw funds.';
+
+  tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
 
   if (isAdmin) {
-    // Admin: fetch and display ALL wallets with management controls
     try {
       const res  = await authFetch(`${API}/wallets`);
       const rows = await res.json();
@@ -1441,16 +1551,14 @@ async function renderWallets() {
           <td>${ROLE_LABELS[u.level] || u.role}</td>
           <td style="color:#00e5c8;font-weight:600;">${peso(u.wallet)}</td>
           <td><button class="teal-btn" onclick="openWalletModal('${u.username}', '${u.fullName}', ${u.wallet})">Manage</button></td>
-        </tr>
-      `).join('');
+        </tr>`).join('');
     } catch { tbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>'; }
   } else {
-    // Employee / IT Dept: show only the logged-in user's own balance, read-only
     try {
       const res  = await fetch(`${API}/wallet/${currentUser.username}`);
       const data = await res.json();
       const bal  = parseFloat(data.balance ?? currentUser.wallet ?? 0);
-      currentUser.wallet = bal; // keep local state in sync
+      currentUser.wallet = bal;
       tbody.innerHTML = `
         <tr>
           <td>${currentUser.username}</td>
@@ -1459,7 +1567,6 @@ async function renderWallets() {
           <td style="color:#00e5c8;font-weight:600;font-size:20px;">${peso(bal)}</td>
           <td></td>
         </tr>`;
-      // Also refresh wallet shown on profile page
       const profWallet = document.getElementById('profile-wallet');
       if (profWallet) profWallet.textContent = peso(bal);
     } catch { tbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load wallet.</td></tr>'; }
@@ -1470,8 +1577,9 @@ function openWalletModal(username, fullName, balance) {
   walletTarget = { username, fullName, balance };
   document.getElementById('wallet-modal-user').textContent = fullName + ' (@' + username + ')';
   document.getElementById('wallet-modal-bal').textContent  = 'Balance: ' + peso(balance);
-  document.getElementById('wallet-amount').value = '';
-  document.getElementById('wallet-note').value   = '';
+  document.getElementById('wallet-amount').value   = '';
+  document.getElementById('wallet-note').value     = '';
+  document.getElementById('wallet-method').value   = 'bank';
   document.getElementById('wallet-modal').style.display = 'flex';
 }
 
@@ -1480,6 +1588,7 @@ function closeWalletModal() {
   walletTarget = null;
 }
 
+// Admin-side add/deduct (manual adjustment)
 async function walletAction(type) {
   if (!walletTarget) return;
   const amount = parseFloat(document.getElementById('wallet-amount').value);
@@ -1498,6 +1607,70 @@ async function walletAction(type) {
       renderWallets();
     } else { showNotif('Error: ' + (data.message || 'Unknown')); }
   } catch { showNotif('Server offline'); }
+}
+
+// ─── SELF-SERVICE WALLET (Cash In / Cash Out) ─────────────────────────────────
+const PAYMENT_METHODS = [
+  { value: 'bank_metrobank',  label: 'Metrobank' },
+  { value: 'bank_bdo',        label: 'BDO' },
+  { value: 'bank_bpi',        label: 'BPI' },
+  { value: 'bank_landbank',   label: 'Landbank' },
+  { value: 'bank_unionbank',  label: 'UnionBank' },
+  { value: 'ewallet_gcash',   label: 'GCash' },
+  { value: 'ewallet_maya',    label: 'Maya' },
+  { value: 'ewallet_shopeepay', label: 'ShopeePay' },
+  { value: 'ewallet_grabpay', label: 'GrabPay' },
+];
+
+function openCashModal(type) {
+  // type = 'in' or 'out'
+  document.getElementById('cash-modal-title').textContent  = type === 'in' ? '💳 Cash In' : '💸 Cash Out';
+  document.getElementById('cash-modal-type').value         = type;
+  document.getElementById('cash-modal-amount').value       = '';
+  document.getElementById('cash-modal-error').textContent  = '';
+  document.getElementById('cash-modal-balance').textContent = 'Current balance: ' + peso(currentUser?.wallet ?? 0);
+
+  // Populate payment methods
+  const methodSelect = document.getElementById('cash-modal-method');
+  methodSelect.innerHTML = PAYMENT_METHODS.map(m =>
+    `<option value="${m.value}">${m.value.startsWith('bank') ? '🏦 ' : '📱 '}${m.label}</option>`
+  ).join('');
+
+  document.getElementById('cash-modal').style.display = 'flex';
+}
+
+function closeCashModal() {
+  document.getElementById('cash-modal').style.display = 'none';
+}
+
+async function submitCash() {
+  const type   = document.getElementById('cash-modal-type').value;
+  const amount = parseFloat(document.getElementById('cash-modal-amount').value);
+  const method = document.getElementById('cash-modal-method').value;
+  const errEl  = document.getElementById('cash-modal-error');
+
+  if (!amount || amount <= 0)  { errEl.textContent = '⚠ Enter a valid amount'; return; }
+  if (amount > 50000)          { errEl.textContent = '⚠ Maximum single transaction: ₱50,000'; return; }
+
+  const endpoint = type === 'in' ? '/wallet/cashin' : '/wallet/cashout';
+  const methodLabel = PAYMENT_METHODS.find(m => m.value === method)?.label || method;
+
+  try {
+    const res  = await authFetch(`${API}${endpoint}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: currentUser.username, amount, method,
+        note: `${type === 'in' ? 'Cash in' : 'Cash out'} via ${methodLabel}`,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      currentUser.wallet = data.newBalance;
+      showNotif(`✓ ${type === 'in' ? 'Cash in' : 'Cash out'} of ${peso(amount)} via ${methodLabel} — Balance: ${peso(data.newBalance)}`);
+      closeCashModal();
+      renderWallets(); // refresh the wallet page
+    } else { errEl.textContent = '⚠ ' + (data.message || 'Failed'); }
+  } catch { errEl.textContent = '⚠ Server offline'; }
 }
 
 // ─── BAN LIST ────────────────────────────────────────────────────────────────

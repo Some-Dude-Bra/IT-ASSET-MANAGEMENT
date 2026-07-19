@@ -26,9 +26,9 @@
         <div style="font-family:'Orbitron',monospace;font-size:10px;color:var(--teal,#00e5c8);letter-spacing:1.5px;margin-bottom:8px;">🧪 DEMO ACCOUNTS — password is "password" for all</div>
         <table style="width:100%;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted,#888);border-collapse:collapse;">
           <tr style="cursor:pointer;" onclick="fillLogin('tony.stark')"><td style="padding:2px 0;color:#fff;">tony.stark</td><td style="padding:2px 0;">Admin</td></tr>
-          <tr style="cursor:pointer;" onclick="fillLogin('bruce.wayne')"><td style="padding:2px 0;color:#fff;">bruce.wayne</td><td style="padding:2px 0;">IT Department</td></tr>
+          <tr style="cursor:pointer;" onclick="fillLogin('bruce.wayne')"><td style="padding:2px 0;color:#fff;">bruce.wayne</td><td style="padding:2px 0;">Manager</td></tr>
           <tr style="cursor:pointer;" onclick="fillLogin('tim.drake')"><td style="padding:2px 0;color:#fff;">tim.drake</td><td style="padding:2px 0;">Employee</td></tr>
-          <tr style="cursor:pointer;" onclick="fillLogin('jason.todd')"><td style="padding:2px 0;color:#fff;">jason.todd</td><td style="padding:2px 0;">Student</td></tr>
+          <tr style="cursor:pointer;" onclick="fillLogin('jason.todd')"><td style="padding:2px 0;color:#fff;">jason.todd</td><td style="padding:2px 0;">Maintenance</td></tr>
         </table>
         <div style="font-size:10px;color:var(--muted,#888);margin-top:6px;">Click a row to fill in the username</div>
       </div>
@@ -157,31 +157,50 @@
   <div class="page-content">
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
     <p class="section-title">Maintenance Log</p>
+
+    <!-- In-Service assets (system notice) -->
+    <p class="section-title" style="font-size:13px;color:var(--teal);margin-bottom:8px;">⚠ In Service — System Notice</p>
     <table class="asset-table" style="margin-bottom:28px;">
-      <thead><tr><th>Asset ID</th><th>Model Name</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Asset ID</th><th>Device</th><th>Status</th><th>Action</th></tr></thead>
       <tbody id="maintenance-tbody"></tbody>
     </table>
+
+    <!-- All other assets — can still add a log note -->
+    <p class="section-title" style="font-size:13px;color:var(--muted);margin-bottom:8px;">📋 Other Assets — Add Log Entry</p>
+    <table class="asset-table" style="margin-bottom:28px;">
+      <thead><tr><th>Asset ID</th><th>Device</th><th>Status</th><th></th></tr></thead>
+      <tbody id="maintenance-all-tbody"></tbody>
+    </table>
+
+    <!-- Repair / Log Panel -->
     <div id="repair-detail" style="display:none;">
       <div class="repair-card">
         <div class="repair-img"><i class="fa-solid fa-laptop"></i></div>
         <div class="repair-info">
-          <div class="repair-label" id="repair-device-name">Device Name:</div>
-          <div class="repair-label" style="margin-top:8px;background:#112;" id="repair-serial">Serial Number:</div>
+          <div class="repair-label" id="repair-device-name">Device:</div>
+          <div class="repair-label" style="margin-top:8px;background:#112;" id="repair-serial">Serial:</div>
         </div>
         <div class="notes-box">
-          <div class="notes-title">Issues Noted</div>
+          <div class="notes-title">Device Status</div>
           <div class="notes-item" id="repair-issue1">—</div>
           <div class="notes-item" id="repair-issue2">—</div>
         </div>
-        <div class="notes-box">
-          <div class="notes-title">Repair Notes</div>
-          <textarea id="repair-notes-input" placeholder="Write repair notes here…"
+        <div class="notes-box" style="flex:2;">
+          <div class="notes-title">Add Maintenance Log Entry</div>
+          <textarea id="repair-notes-input" placeholder="Describe what was done, what was found, or any repair notes…"
             style="width:100%;min-height:80px;margin-top:8px;background:#0a0a0a;border:1px solid var(--teal-dark,#00695c);border-radius:8px;color:#e0fff8;font-family:'Share Tech Mono',monospace;font-size:12px;padding:8px;resize:vertical;"></textarea>
-          <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="saveRepairNotes()">💾 Save Notes</button>
+          <button class="teal-btn" style="margin-top:8px;width:fit-content;" onclick="saveRepairNotes()">💾 Save Log Entry</button>
         </div>
       </div>
+
+      <!-- Maintenance Log History -->
+      <div style="margin-top:20px;">
+        <p class="section-title" style="font-size:13px;margin-bottom:10px;">📜 Maintenance History</p>
+        <div id="maintenance-log-entries" style="max-height:320px;overflow-y:auto;padding:4px 0;"></div>
+      </div>
+
       <div style="margin-top:20px;text-align:center;">
-        <button class="teal-btn" onclick="markAvailable()" id="mark-avail-btn">Update Status to Available</button>
+        <button class="teal-btn" onclick="markAvailable()" id="mark-avail-btn">✓ Mark as Available (Resolved)</button>
       </div>
     </div>
   </div>
@@ -295,11 +314,22 @@
   <div class="page-content">
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
     <p class="section-title">Return Assets</p>
+
+    <!-- Pending Return Requests — IT/Admin only -->
+    <div id="pending-return-requests-section" style="display:none;margin-bottom:28px;">
+      <p class="section-title" style="font-size:13px;margin-bottom:10px;color:var(--teal);">⏳ Pending Return Requests</p>
+      <table class="asset-table">
+        <thead><tr><th>Asset</th><th>Requested By</th><th>Date</th><th>Daily Cost</th><th>Action</th></tr></thead>
+        <tbody id="pending-return-requests-tbody"></tbody>
+      </table>
+    </div>
+
+    <p class="section-title" style="font-size:13px;margin-bottom:10px;">Active Borrows</p>
     <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">
-      All currently borrowed assets. Click Return to process a return and calculate charges.
+      Employees: click "Request Return" to submit a return for approval. IT/Admin: click "Approve Return" to process directly.
     </p>
     <table class="asset-table">
-      <thead><tr><th>Asset</th><th>Borrowed By</th><th>Borrowed On</th><th>Due Date</th><th>Daily Cost</th><th></th></tr></thead>
+      <thead><tr><th>Asset</th><th>Borrowed By</th><th>Borrowed On</th><th>Due Date</th><th>Daily Cost</th><th>Action</th></tr></thead>
       <tbody id="returns-tbody"></tbody>
     </table>
   </div>
@@ -369,10 +399,11 @@
           <div class="field-group">
             <span class="field-label">Account Clearance Level</span>
             <select class="field-input" id="new-emp-level">
-              <option value="1">Student</option>
-              <option value="2" selected>Employee</option>
-              <option value="3">IT Department</option>
-              <option value="5">Admin</option>
+              <option value="1">Level 1 — Student</option>
+              <option value="2" selected>Level 2 — Employee</option>
+              <option value="3">Level 3 — Maintenance</option>
+              <option value="4">Level 4 — Manager</option>
+              <option value="5">Level 5 — Admin</option>
             </select>
           </div>
           <button class="teal-btn" onclick="addEmployee()">Add New Employee</button>
@@ -439,6 +470,17 @@
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
     <p class="section-title" id="wallets-page-title">Wallet</p>
     <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;" id="wallets-page-subtitle">Your current wallet balance.</p>
+
+    <!-- Cash In / Cash Out buttons — visible to all users for their own wallet -->
+    <div style="display:flex;gap:10px;margin-bottom:20px;">
+      <button class="teal-btn" onclick="openCashModal('in')" style="display:flex;align-items:center;gap:8px;">
+        💳 Cash In
+      </button>
+      <button class="teal-btn" onclick="openCashModal('out')" style="background:transparent;border:1px solid var(--teal);color:var(--teal);display:flex;align-items:center;gap:8px;">
+        💸 Cash Out
+      </button>
+    </div>
+
     <table class="asset-table">
       <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Balance</th><th id="wallets-manage-header" style="display:none;"></th></tr></thead>
       <tbody id="wallets-tbody"></tbody>
@@ -476,12 +518,39 @@
     <div id="wallet-modal-user"  style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:4px;"></div>
     <div id="wallet-modal-bal"   style="font-family:'Share Tech Mono',monospace;font-size:18px;color:#00e5c8;margin-bottom:18px;"></div>
     <input id="wallet-amount" class="field-input" type="number" min="0.01" step="0.01" placeholder="Amount (₱)" style="margin-bottom:10px;">
-    <input id="wallet-note"   class="field-input" type="text" placeholder="Note (optional)" style="margin-bottom:16px;">
+    <input id="wallet-note"   class="field-input" type="text" placeholder="Note (optional)" style="margin-bottom:10px;">
+    <select id="wallet-method" class="field-input" style="margin-bottom:16px;">
+      <option value="bank">🏦 Bank Transfer</option>
+      <option value="ewallet">📱 E-Wallet</option>
+      <option value="manual">🔧 Manual Adjustment</option>
+    </select>
     <div style="display:flex;gap:10px;">
       <button class="teal-btn" style="flex:1;" onclick="walletAction('add')">+ Add Funds</button>
       <button class="add-btn"  style="flex:1;background:#3a0000;border-color:#ff4444;color:#ff8888;" onclick="walletAction('deduct')">− Remove</button>
     </div>
     <button onclick="closeWalletModal()" style="margin-top:14px;width:100%;background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px;border-radius:8px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;">Cancel</button>
+  </div>
+</div>
+
+<!-- ══════ CASH IN / CASH OUT MODAL ══════ -->
+<div id="cash-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--teal);border-radius:16px;padding:28px;width:360px;max-width:95vw;">
+    <div id="cash-modal-title" style="font-family:'Orbitron',monospace;font-size:14px;color:var(--teal);margin-bottom:6px;">💳 Cash In</div>
+    <div id="cash-modal-balance" style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;"></div>
+    <input type="hidden" id="cash-modal-type" value="in">
+    <div class="field-group" style="margin-bottom:10px;">
+      <span class="field-label">Amount (₱)</span>
+      <input id="cash-modal-amount" class="field-input" type="number" min="1" step="0.01" placeholder="0.00">
+    </div>
+    <div class="field-group" style="margin-bottom:16px;">
+      <span class="field-label">Payment Method</span>
+      <select id="cash-modal-method" class="field-input"></select>
+    </div>
+    <div id="cash-modal-error" style="color:#ff4444;font-size:11px;min-height:16px;font-family:'Share Tech Mono',monospace;margin-bottom:12px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="teal-btn" style="flex:1;" onclick="submitCash()">Confirm</button>
+      <button onclick="closeCashModal()" style="flex:1;background:transparent;border:1px solid var(--border);color:var(--muted);padding:10px;border-radius:8px;cursor:pointer;font-family:'Share Tech Mono',monospace;font-size:12px;">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -570,10 +639,10 @@
         <span class="field-label">Clearance Level</span>
         <select class="field-input" id="cr-level">
           <option value="1">Level 1 — Student</option>
-          <option value="1">Student</option>
-          <option value="2">Employee</option>
-          <option value="3">IT Department</option>
-          <option value="5">Admin</option>
+          <option value="2">Level 2 — Employee</option>
+          <option value="3">Level 3 — Maintenance</option>
+          <option value="4">Level 4 — Manager</option>
+          <option value="5">Level 5 — Admin</option>
         </select>
       </div>
     </div>
