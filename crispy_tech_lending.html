@@ -26,9 +26,9 @@
         <div style="font-family:'Orbitron',monospace;font-size:10px;color:var(--teal,#00e5c8);letter-spacing:1.5px;margin-bottom:8px;">🧪 DEMO ACCOUNTS — password is "password" for all</div>
         <table style="width:100%;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted,#888);border-collapse:collapse;">
           <tr style="cursor:pointer;" onclick="fillLogin('tony.stark')"><td style="padding:2px 0;color:#fff;">tony.stark</td><td style="padding:2px 0;">Admin</td></tr>
-          <tr style="cursor:pointer;" onclick="fillLogin('bruce.wayne')"><td style="padding:2px 0;color:#fff;">bruce.wayne</td><td style="padding:2px 0;">Manager</td></tr>
+          <tr style="cursor:pointer;" onclick="fillLogin('bruce.wayne')"><td style="padding:2px 0;color:#fff;">bruce.wayne</td><td style="padding:2px 0;">IT Department</td></tr>
           <tr style="cursor:pointer;" onclick="fillLogin('tim.drake')"><td style="padding:2px 0;color:#fff;">tim.drake</td><td style="padding:2px 0;">Employee</td></tr>
-          <tr style="cursor:pointer;" onclick="fillLogin('jason.todd')"><td style="padding:2px 0;color:#fff;">jason.todd</td><td style="padding:2px 0;">Maintenance</td></tr>
+          <tr style="cursor:pointer;" onclick="fillLogin('jason.todd')"><td style="padding:2px 0;color:#fff;">jason.todd</td><td style="padding:2px 0;">Student</td></tr>
         </table>
         <div style="font-size:10px;color:var(--muted,#888);margin-top:6px;">Click a row to fill in the username</div>
       </div>
@@ -369,11 +369,10 @@
           <div class="field-group">
             <span class="field-label">Account Clearance Level</span>
             <select class="field-input" id="new-emp-level">
-              <option value="1">Level 1 — Student</option>
-              <option value="2" selected>Level 2 — Employee</option>
-              <option value="3">Level 3 — Maintenance</option>
-              <option value="4">Level 4 — Manager</option>
-              <option value="5">Level 5 — Admin</option>
+              <option value="1">Student</option>
+              <option value="2" selected>Employee</option>
+              <option value="3">IT Department</option>
+              <option value="5">Admin</option>
             </select>
           </div>
           <button class="teal-btn" onclick="addEmployee()">Add New Employee</button>
@@ -438,10 +437,10 @@
   </div>
   <div class="page-content">
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
-    <p class="section-title">User Wallets</p>
-    <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">Add or remove funds from any user account.</p>
+    <p class="section-title" id="wallets-page-title">Wallet</p>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;" id="wallets-page-subtitle">Your current wallet balance.</p>
     <table class="asset-table">
-      <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Balance</th><th></th></tr></thead>
+      <thead><tr><th>Username</th><th>Full Name</th><th>Role</th><th>Balance</th><th id="wallets-manage-header" style="display:none;"></th></tr></thead>
       <tbody id="wallets-tbody"></tbody>
     </table>
   </div>
@@ -571,10 +570,10 @@
         <span class="field-label">Clearance Level</span>
         <select class="field-input" id="cr-level">
           <option value="1">Level 1 — Student</option>
-          <option value="2">Level 2 — Employee</option>
-          <option value="3">Level 3 — Maintenance</option>
-          <option value="4">Level 4 — Manager</option>
-          <option value="5">Level 5 — Admin</option>
+          <option value="1">Student</option>
+          <option value="2">Employee</option>
+          <option value="3">IT Department</option>
+          <option value="5">Admin</option>
         </select>
       </div>
     </div>

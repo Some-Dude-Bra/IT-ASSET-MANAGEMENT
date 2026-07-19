@@ -14,12 +14,25 @@ function authFetch(url, options = {}) {
 }
 
 // ─── CLEARANCE LEVELS ────────────────────────────────────────────────────────
-// 1 = Student      — view only, cannot borrow
-// 2 = Employee     — borrow / return assets
-// 3 = Maintenance  — maintenance log + asset management + repair
-// 4 = Manager      — everything except create/ban accounts
-// 5 = Admin        — everything
-const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
+// 1 = Student       — Departments + Settings only
+// 2 = Employee      — + Asset Inventory, own Wallet view
+// 3 = IT Department — + Return Assets, Borrow History, Maintenance Log, Account Requests
+// 5 = Admin         — everything (Manage Assets, Manage Employees, User Wallets, Accounts, Ban List)
+//
+// NOTE: level 4 (Manager) is no longer used as a role in the UI.
+// The old 3-tier (Maintenance/Manager) is collapsed:
+//   IT Dept = level 3  (was Maintenance+Manager combined minus account mgmt)
+//   Admin   = level 5  (unchanged)
+const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, IT: 3, MANAGER: 4, ADMIN: 5 };
+
+// Human-readable role labels shown in profile / settings
+const ROLE_LABELS = {
+  1: 'Student',
+  2: 'Employee',
+  3: 'IT Department',
+  4: 'IT Department',   // legacy level-4 accounts display as IT Dept
+  5: 'Admin',
+};
 
 // ─── THEMES ──────────────────────────────────────────────────────────────────
 // Themes are scoped PER USER (keyed by username), not to the machine/browser —
@@ -234,17 +247,24 @@ const AI_JOKES = [
 ];
 
 // ─── NAVIGATION ──────────────────────────────────────────────────────────────
-// Minimum clearance level required to view each page. Pages not listed are open to any logged-in user.
+// Minimum clearance level required to view each page.
+// Pages not listed here are open to any logged-in user (login + banned pages are always open).
+//
+// Role → page access summary:
+//   Student (1)      : inventory (view only), departments, settings
+//   Employee (2)     : + cart/borrow, own wallet view
+//   IT Dept (3/4)    : + returns, borrow-history, maintenance, account-requests
+//   Admin (5)        : + manage-assets, employees, wallets (all), accounts, ban-list
 const PAGE_CLEARANCE = {
-  'returns':         CLEARANCE.EMPLOYEE,
-  'borrow-history':  CLEARANCE.MANAGER,
-  'maintenance':     CLEARANCE.MAINTENANCE,
-  'manage-assets':   CLEARANCE.MAINTENANCE,
-  'employees':       CLEARANCE.MANAGER,
-  'wallets':         CLEARANCE.MANAGER,
-  'accounts':        CLEARANCE.ADMIN,
-  'account-requests':CLEARANCE.ADMIN,
-  'ban-list':        CLEARANCE.ADMIN,
+  'returns':          CLEARANCE.IT,
+  'borrow-history':   CLEARANCE.IT,
+  'maintenance':      CLEARANCE.IT,
+  'manage-assets':    CLEARANCE.ADMIN,
+  'employees':        CLEARANCE.ADMIN,
+  'wallets':          CLEARANCE.EMPLOYEE,   // all roles see this page; content is filtered per role
+  'accounts':         CLEARANCE.ADMIN,
+  'account-requests': CLEARANCE.IT,
+  'ban-list':         CLEARANCE.ADMIN,
 };
 
 function nav(page) {
@@ -340,12 +360,11 @@ function logout() {
 // ─── PROFILE ─────────────────────────────────────────────────────────────────
 function renderProfile() {
   if (!currentUser) return;
-  const lvlLabels = { 1: 'Level 1 — Student', 2: 'Level 2 — Employee', 3: 'Level 3 — Maintenance', 4: 'Level 4 — Manager', 5: 'Level 5 — Admin' };
   document.getElementById('profile-name').textContent     = currentUser.fullName;
   document.getElementById('profile-username').textContent = currentUser.username;
   document.getElementById('profile-fullname').textContent = currentUser.fullName;
-  document.getElementById('profile-role').textContent     = currentUser.role;
-  document.getElementById('profile-level').textContent    = lvlLabels[currentUser.level] || 'Level ' + currentUser.level;
+  document.getElementById('profile-role').textContent     = ROLE_LABELS[currentUser.level] || currentUser.role;
+  document.getElementById('profile-level').textContent    = ROLE_LABELS[currentUser.level] || 'Level ' + currentUser.level;
   document.getElementById('profile-wallet').textContent   = '₱' + (currentUser.wallet || 0).toFixed(2);
 }
 
@@ -355,19 +374,24 @@ function renderDashboard() {
   const lvl = currentUser.level;
   document.getElementById('inv-username').textContent  = currentUser.fullName;
 
+  // ── Dashboard tiles per role ──────────────────────────────────────────────
+  // Student (1)   : Asset Inventory (view only), Departments, Settings
+  // Employee (2)  : + Wallet (own balance only)
+  // IT Dept (3/4) : + Return Assets, Borrow History, Maintenance Log, Account Requests
+  // Admin (5)     : + Manage Assets, Manage Employees, User Wallets (all), Accounts, Ban List
   const icons = [
-    { icon: 'fa-solid fa-laptop',             label: 'Asset Inventory',   page: 'inventory',       minLevel: CLEARANCE.STUDENT },
-    { icon: 'fa-solid fa-rotate-left',        label: 'Return Assets',     page: 'returns',         minLevel: CLEARANCE.EMPLOYEE },
-    { icon: 'fa-solid fa-clock-rotate-left',  label: 'Borrow History',    page: 'borrow-history',  minLevel: CLEARANCE.MANAGER },
-    { icon: 'fa-solid fa-screwdriver-wrench', label: 'Maintenance Log',   page: 'maintenance',     minLevel: CLEARANCE.MAINTENANCE },
-    { icon: 'fa-solid fa-boxes-stacked',      label: 'Manage Assets',     page: 'manage-assets',   minLevel: CLEARANCE.MAINTENANCE },
-    { icon: 'fa-solid fa-users',              label: 'Manage Employees',  page: 'employees',       minLevel: CLEARANCE.MANAGER },
-    { icon: 'fa-solid fa-building',           label: 'Departments',       page: 'departments',     minLevel: CLEARANCE.STUDENT },
-    { icon: 'fa-solid fa-wallet',             label: 'User Wallets',      page: 'wallets',         minLevel: CLEARANCE.MANAGER },
-    { icon: 'fa-solid fa-key',                label: 'Accounts',          page: 'accounts',        minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-inbox',               label: 'Account Requests',  page: 'account-requests',minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-ban',                label: 'Ban List',          page: 'ban-list',        minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-gears',              label: 'Settings',          page: 'settings',        minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-laptop',             label: 'Asset Inventory',    page: 'inventory',        minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-rotate-left',        label: 'Return Assets',      page: 'returns',          minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-clock-rotate-left',  label: 'Borrow History',     page: 'borrow-history',   minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-screwdriver-wrench', label: 'Maintenance Log',    page: 'maintenance',      minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-boxes-stacked',      label: 'Manage Assets',      page: 'manage-assets',    minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-users',              label: 'Manage Employees',   page: 'employees',        minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-building',           label: 'Departments',        page: 'departments',      minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-wallet',             label: 'Wallet',             page: 'wallets',          minLevel: CLEARANCE.EMPLOYEE },
+    { icon: 'fa-solid fa-key',                label: 'Accounts',           page: 'accounts',         minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-inbox',              label: 'Account Requests',   page: 'account-requests', minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-ban',                label: 'Ban List',           page: 'ban-list',         minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-gears',              label: 'Settings',           page: 'settings',         minLevel: CLEARANCE.STUDENT },
   ];
 
   const grid = document.getElementById('dashboard-grid');
@@ -432,7 +456,7 @@ async function refreshNotifications() {
   } catch {}
 
   try {
-    if (lvl >= CLEARANCE.MAINTENANCE) {
+    if (lvl >= CLEARANCE.IT) {
       await loadAssets();
       assets.filter(a => a.status === 'service').forEach(a => {
         list.push({ icon: '🔧', text: `${a.name} (ID ${a.id}) is still In Service — repair pending`, page: 'maintenance' });
@@ -475,9 +499,8 @@ function startNotifPolling() {
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
 function renderSettings() {
   if (!currentUser) return;
-  const lvlLabels = { 1: 'Level 1 — Student', 2: 'Level 2 — Employee', 3: 'Level 3 — Maintenance', 4: 'Level 4 — Manager', 5: 'Level 5 — Admin' };
   document.getElementById('settings-username').textContent = currentUser.fullName;
-  document.getElementById('settings-level').textContent    = lvlLabels[currentUser.level] || 'Level ' + currentUser.level;
+  document.getElementById('settings-level').textContent    = ROLE_LABELS[currentUser.level] || 'Level ' + currentUser.level;
   document.getElementById('settings-theme-value').textContent = THEMES[currentThemeName].label;
   document.getElementById('settings-mode-value').textContent  = MODES[currentModeName].label;
 }
@@ -753,7 +776,7 @@ function renderMaintenance() {
 }
 
 function openRepair(id) {
-  if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
+  if (!currentUser || currentUser.level < CLEARANCE.IT) { showNotif('⚠ IT Department clearance required'); return; }
   selectedAssetId = id;
   const asset = assets.find(a => a.id === id);
   document.getElementById('repair-device-name').textContent = 'Device Name: ' + asset.name;
@@ -766,7 +789,7 @@ function openRepair(id) {
 }
 
 async function saveRepairNotes() {
-  if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
+  if (!currentUser || currentUser.level < CLEARANCE.IT) { showNotif('⚠ IT Department clearance required'); return; }
   const asset = assets.find(a => a.id === selectedAssetId);
   if (!asset) return;
   const notes = document.getElementById('repair-notes-input').value;
@@ -784,7 +807,7 @@ async function saveRepairNotes() {
 }
 
 async function markAvailable() {
-  if (!currentUser || currentUser.level < CLEARANCE.MAINTENANCE) { showNotif('⚠ Maintenance clearance required'); return; }
+  if (!currentUser || currentUser.level < CLEARANCE.IT) { showNotif('⚠ IT Department clearance required'); return; }
   const asset = assets.find(a => a.id === selectedAssetId);
   if (!asset) return;
   try {
@@ -817,14 +840,14 @@ function renderManageAssets() {
       <td><button class="teal-btn" onclick="openAssetDetail(${a.id})">Monitor</button></td>
     </tr>
   `).join('');
-  document.getElementById('add-asset-section').style.display = lvl >= CLEARANCE.MAINTENANCE ? 'block' : 'none';
+  document.getElementById('add-asset-section').style.display = lvl >= CLEARANCE.ADMIN ? 'block' : 'none';
 }
 
 function openAssetDetail(id) {
   selectedAssetId = id;
   const a        = assets.find(x => x.id === id);
   const container = document.getElementById('asset-detail-content');
-  const canEdit  = currentUser && currentUser.level >= CLEARANCE.MAINTENANCE;
+  const canEdit  = currentUser && currentUser.level >= CLEARANCE.IT;
   const photoSrc = a.photoUrl;
   const photoHtml = photoSrc
     ? `<img id="asset-photo-img" src="${photoSrc}" alt="${a.name}" style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:2px solid var(--teal,#00bcd4);">`
@@ -1010,7 +1033,7 @@ const DEPT_OPTIONS = [
 
 function renderEmployees() {
   const lvl = currentUser ? currentUser.level : 0;
-  const canManage = lvl >= CLEARANCE.MANAGER;
+  const canManage = lvl >= CLEARANCE.ADMIN;
   const canDelete = lvl >= CLEARANCE.ADMIN;
   document.getElementById('add-emp-section').style.display = canManage ? 'block' : 'none';
   const container = document.getElementById('emp-view-section');
@@ -1164,7 +1187,7 @@ async function saveChangeRequest() {
   const dept      = document.getElementById('cr-dept').value;
   const email     = document.getElementById('cr-email').value.trim();
   const level     = parseInt(document.getElementById('cr-level').value, 10);
-  const roles     = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
+  const roles     = { 1: 'Student', 2: 'Employee', 3: 'IT Department', 4: 'IT Department', 5: 'Admin' };
 
   try {
     if (employeeId) {
@@ -1381,25 +1404,66 @@ async function submitVerifyPin() {
   } catch { errEl.textContent = '⚠ Server offline'; }
 }
 
-// ─── WALLETS (manager/admin) ─────────────────────────────────────────────────
+// ─── WALLETS ─────────────────────────────────────────────────────────────────
+// Admin (5)       → sees ALL user wallets with Add/Remove controls
+// IT Dept (3/4)   → sees only their own wallet balance (read-only)
+// Employee (2)    → sees only their own wallet balance (read-only)
+// Student (1)     → no access (redirected by PAGE_CLEARANCE)
 async function renderWallets() {
-  if (!currentUser || currentUser.level < CLEARANCE.MANAGER) { showNotif('Manager access required'); nav('dashboard'); return; }
-  const tbody = document.getElementById('wallets-tbody');
-  tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
-  try {
-    const res  = await authFetch(`${API}/wallets`);
-    const rows = await res.json();
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">No users found.</td></tr>'; return; }
-    tbody.innerHTML = rows.map(u => `
-      <tr>
-        <td>${u.username}</td>
-        <td>${u.fullName}</td>
-        <td>${u.role}</td>
-        <td style="color:#00e5c8;font-weight:600;">${peso(u.wallet)}</td>
-        <td><button class="teal-btn" onclick="openWalletModal('${u.username}', '${u.fullName}', ${u.wallet})">Manage</button></td>
-      </tr>
-    `).join('');
-  } catch { tbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>'; }
+  if (!currentUser) return;
+  const isAdmin = currentUser.level >= CLEARANCE.ADMIN;
+  const tbody   = document.getElementById('wallets-tbody');
+
+  // Show/hide the "Manage Wallet" column header depending on role
+  const manageHeader = document.getElementById('wallets-manage-header');
+  if (manageHeader) manageHeader.style.display = isAdmin ? '' : 'none';
+
+  // Show the page title/subtitle that reflects what the user sees
+  const titleEl    = document.getElementById('wallets-page-title');
+  const subtitleEl = document.getElementById('wallets-page-subtitle');
+  if (titleEl)    titleEl.textContent    = isAdmin ? 'User Wallets' : 'My Wallet';
+  if (subtitleEl) subtitleEl.textContent = isAdmin
+    ? 'Add or remove funds from any user account.'
+    : 'Your current wallet balance.';
+
+  tbody.innerHTML = `<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>`;
+
+  if (isAdmin) {
+    // Admin: fetch and display ALL wallets with management controls
+    try {
+      const res  = await authFetch(`${API}/wallets`);
+      const rows = await res.json();
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">No users found.</td></tr>'; return; }
+      tbody.innerHTML = rows.map(u => `
+        <tr>
+          <td>${u.username}</td>
+          <td>${u.fullName}</td>
+          <td>${ROLE_LABELS[u.level] || u.role}</td>
+          <td style="color:#00e5c8;font-weight:600;">${peso(u.wallet)}</td>
+          <td><button class="teal-btn" onclick="openWalletModal('${u.username}', '${u.fullName}', ${u.wallet})">Manage</button></td>
+        </tr>
+      `).join('');
+    } catch { tbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>'; }
+  } else {
+    // Employee / IT Dept: show only the logged-in user's own balance, read-only
+    try {
+      const res  = await fetch(`${API}/wallet/${currentUser.username}`);
+      const data = await res.json();
+      const bal  = parseFloat(data.balance ?? currentUser.wallet ?? 0);
+      currentUser.wallet = bal; // keep local state in sync
+      tbody.innerHTML = `
+        <tr>
+          <td>${currentUser.username}</td>
+          <td>${currentUser.fullName}</td>
+          <td>${ROLE_LABELS[currentUser.level] || currentUser.role}</td>
+          <td style="color:#00e5c8;font-weight:600;font-size:20px;">${peso(bal)}</td>
+          <td></td>
+        </tr>`;
+      // Also refresh wallet shown on profile page
+      const profWallet = document.getElementById('profile-wallet');
+      if (profWallet) profWallet.textContent = peso(bal);
+    } catch { tbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load wallet.</td></tr>'; }
+  }
 }
 
 function openWalletModal(username, fullName, balance) {
@@ -1584,7 +1648,7 @@ async function refreshNotifications() {
   updateDueTodayBanner(dueTodayOrOverdue);
 
   // Assets awaiting repair (Maintenance clearance or above)
-  if (currentUser.level >= CLEARANCE.MAINTENANCE) {
+  if (currentUser.level >= CLEARANCE.IT) {
     const pending = (assets || []).filter(a => a.status === 'service');
     if (pending.length) {
       items.push({ icon: '🛠', text: `${pending.length} asset${pending.length > 1 ? 's' : ''} awaiting repair`, page: 'maintenance' });

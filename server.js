@@ -96,13 +96,13 @@ function initTables() {
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS PinHash VARCHAR(64) DEFAULT NULL',
      'ALTER TABLE Users ADD COLUMN IF NOT EXISTS PinSalt VARCHAR(32) DEFAULT NULL',
     ].forEach(sql => db.query(sql, () => {}));
-    // Seed default demo users — clearance scale: 1=Student, 2=Employee, 3=Maintenance, 4=Manager, 5=Admin
+    // Seed default demo users — clearance scale: 1=Student, 2=Employee, 3=IT Department, 5=Admin
     // Password for every seeded account is "password" (hashed below) — this is a demo/class project.
     const DEMO_USERS = [
       ['tony.stark',  'Tony Stark',  5, 'Admin'],
-      ['bruce.wayne', 'Bruce Wayne', 4, 'Manager'],
+      ['bruce.wayne', 'Bruce Wayne', 3, 'IT Department'],
       ['tim.drake',   'Tim Drake',   2, 'Employee'],
-      ['jason.todd',  'Jason Todd',  3, 'Maintenance'],
+      ['jason.todd',  'Jason Todd',  1, 'Student'],
     ];
     // Insert any demo account that's missing — this runs every startup, not just
     // on a brand-new DB, so upgrading an existing install (which already had its
@@ -199,11 +199,11 @@ function initTables() {
 // ─── CLEARANCE LEVELS ────────────────────────────────────────────────────────
 // 1 = Student   (view only, cannot borrow)
 // 2 = Employee  (borrow / return)
-// 3 = Maintenance (maintenance log + asset management + repair)
-// 4 = Manager   (everything except create/ban accounts)
+// 3 = IT Department (returns, borrow history, maintenance log, account requests)
+// 4 = IT Department (legacy — treated same as level 3)
 // 5 = Admin     (everything)
 const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
-const ROLE_NAMES = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
+const ROLE_NAMES = { 1: 'Student', 2: 'Employee', 3: 'IT Department', 4: 'IT Department', 5: 'Admin' };
 
 // Simple header-based level gate. The frontend sends the acting user's level in
 // the 'x-user-level' header (set automatically by app.js on every request once logged in).
@@ -970,4 +970,3 @@ const PORT = process.env.PORT || 20240;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
