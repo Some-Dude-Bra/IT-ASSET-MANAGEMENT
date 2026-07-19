@@ -46,7 +46,7 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 const db = mysql.createConnection({
   host:     'localhost',
-  port:     3306,
+  //port:     3306,
   user:     's25101264_ITASSEST_MANAGEMENT',
   password: '!23456789O',
   database: 's25101264_ITASSEST_MANAGEMENT',
