@@ -23,6 +23,7 @@ function authFetch(url, options = {}) {
 // 4 = Manager      — everything except create/ban accounts
 // 5 = Admin        — everything
 const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, IT: 3, MANAGER: 4, ADMIN: 5 };
+const ROLE_LABELS = { 1: 'Student', 2: 'Employee', 3: 'Maintenance', 4: 'Manager', 5: 'Admin' };
 
 // ─── THEMES ──────────────────────────────────────────────────────────────────
 // Themes are scoped PER USER (keyed by username), not to the machine/browser —
