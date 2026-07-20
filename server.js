@@ -446,7 +446,8 @@ app.get('/assets', (req, res) => {
       // Assets currently "In Service" (under maintenance/repair) are only visible
       // to Maintenance clearance and above — everyone else's Inventory list just
       // won't include them, same as if they didn't exist yet.
-      const visible = lvl >= CLEARANCE.MAINTENANCE ? rows : rows.filter(r => r.Status !== 'In Service');
+      const visible = lvl >= CLEARANCE.IT ? rows : rows.filter(r => r.Status !== 'In Service');
+      
       res.json(visible);
     });
 });
