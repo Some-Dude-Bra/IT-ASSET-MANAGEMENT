@@ -1,5 +1,8 @@
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
-const API = ' ';
+// Auto-detects local vs deployed — no need to change this manually
+const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? 'http://localhost:20240'
+  : `${window.location.protocol}//${window.location.hostname}:20240`;
 
 // ─── AUTH FETCH ──────────────────────────────────────────────────────────────
 // Wraps fetch() and attaches the logged-in user's clearance level so the server
@@ -19,7 +22,7 @@ function authFetch(url, options = {}) {
 // 3 = Maintenance  — maintenance log + asset management + repair
 // 4 = Manager      — everything except create/ban accounts
 // 5 = Admin        — everything
-const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, MANAGER: 4, ADMIN: 5 };
+const CLEARANCE = { STUDENT: 1, EMPLOYEE: 2, MAINTENANCE: 3, IT: 3, MANAGER: 4, ADMIN: 5 };
 
 // ─── THEMES ──────────────────────────────────────────────────────────────────
 // Themes are scoped PER USER (keyed by username), not to the machine/browser —
@@ -241,7 +244,7 @@ const PAGE_CLEARANCE = {
   'maintenance':     CLEARANCE.IT,
   'manage-assets':   CLEARANCE.IT,
   'employees':       CLEARANCE.ADMIN,
-  'wallets':         CLEARANCE.ADMIN,
+  'wallets':         CLEARANCE.EMPLOYEE,
   'accounts':        CLEARANCE.ADMIN,
   'account-requests':CLEARANCE.ADMIN,
   'ban-list':        CLEARANCE.ADMIN,
@@ -268,7 +271,9 @@ function nav(page) {
     profile:         renderProfile,
     shrine:          renderShrine,
     returns:         renderReturns,
-    'borrow-history':renderBorrowHistory,
+    'borrow-history':   renderBorrowHistory,
+    'borrow-requests':  renderBorrowRequests,
+    'my-requests':      renderMyRequests,
     wallets:         renderWallets,
     accounts:        renderAccounts,
     'account-requests': renderAccountRequests,
@@ -356,18 +361,20 @@ function renderDashboard() {
   document.getElementById('inv-username').textContent  = currentUser.fullName;
 
   const icons = [
-    { icon: 'fa-solid fa-laptop',             label: 'Asset Inventory',   page: 'inventory',       minLevel: CLEARANCE.STUDENT },
-    { icon: 'fa-solid fa-rotate-left',        label: 'Return Assets',     page: 'returns',         minLevel: CLEARANCE.EMPLOYEE },
-    { icon: 'fa-solid fa-clock-rotate-left',  label: 'Borrow History',    page: 'borrow-history',  minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-screwdriver-wrench', label: 'Maintenance Log',   page: 'maintenance',     minLevel: CLEARANCE.IT },
-    { icon: 'fa-solid fa-boxes-stacked',      label: 'Manage Assets',     page: 'manage-assets',   minLevel: CLEARANCE.IT },
-    { icon: 'fa-solid fa-users',              label: 'Manage Employees',  page: 'employees',       minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-building',           label: 'Departments',       page: 'departments',     minLevel: CLEARANCE.STUDENT },
-    { icon: 'fa-solid fa-wallet',             label: 'User Wallets',      page: 'wallets',         minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-key',                label: 'Accounts',          page: 'accounts',        minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-inbox',               label: 'Account Requests',  page: 'account-requests',minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-ban',                label: 'Ban List',          page: 'ban-list',        minLevel: CLEARANCE.ADMIN },
-    { icon: 'fa-solid fa-gears',              label: 'Settings',          page: 'settings',        minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-laptop',              label: 'Asset Inventory',   page: 'inventory',        minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-rotate-left',         label: 'Return Assets',     page: 'returns',          minLevel: CLEARANCE.EMPLOYEE },
+    { icon: 'fa-solid fa-list-check',          label: 'My Requests',       page: 'my-requests',      minLevel: CLEARANCE.EMPLOYEE },
+    { icon: 'fa-solid fa-clock-rotate-left',   label: 'Borrow History',    page: 'borrow-history',   minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-inbox',               label: 'Requests',          page: 'borrow-requests',  minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-screwdriver-wrench',  label: 'Maintenance Log',   page: 'maintenance',      minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-boxes-stacked',       label: 'Manage Assets',     page: 'manage-assets',    minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-users',               label: 'Manage Employees',  page: 'employees',        minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-building',            label: 'Departments',       page: 'departments',      minLevel: CLEARANCE.STUDENT },
+    { icon: 'fa-solid fa-wallet',              label: 'Wallet',            page: 'wallets',          minLevel: CLEARANCE.EMPLOYEE },
+    { icon: 'fa-solid fa-key',                 label: 'Accounts',          page: 'accounts',         minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-file-circle-question',label: 'Account Requests',  page: 'account-requests', minLevel: CLEARANCE.IT },
+    { icon: 'fa-solid fa-ban',                 label: 'Ban List',          page: 'ban-list',         minLevel: CLEARANCE.ADMIN },
+    { icon: 'fa-solid fa-gears',               label: 'Settings',          page: 'settings',         minLevel: CLEARANCE.STUDENT },
   ];
 
   const grid = document.getElementById('dashboard-grid');
@@ -565,9 +572,13 @@ function gotoCart() {
 
 // ─── CART ────────────────────────────────────────────────────────────────────
 function renderCart() {
-  const tbody = document.getElementById('cart-tbody');
+  const tbody    = document.getElementById('cart-tbody');
   const walletEl = document.getElementById('cart-wallet-balance');
+  const noticeEl = document.getElementById('cart-role-notice');
   if (currentUser) walletEl.textContent = peso(currentUser.wallet);
+
+  // Show notice to employees that their borrow is a request
+  if (noticeEl) noticeEl.style.display = (currentUser && currentUser.level < CLEARANCE.IT) ? 'block' : 'none';
 
   if (cart.length === 0) {
     tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);font-style:italic;padding:20px;">Cart is empty.</td></tr>';
@@ -584,6 +595,7 @@ function renderCart() {
   `).join('');
   const d = new Date(); d.setDate(d.getDate() + 7);
   document.getElementById('return-date').value = d.toISOString().slice(0, 10);
+  updateCartTotal();
 }
 
 function removeFromCart(id) {
@@ -657,11 +669,12 @@ async function renderReturns() {
         const dueDate      = r.DueDate ? new Date(r.DueDate).toLocaleDateString() : '—';
         const isOverdue    = r.DueDate && new Date(r.DueDate) < new Date();
         const isOwn        = r.BorrowedBy === currentUser?.username;
-        // Employees: "Request Return" button — IT/Admin: "Approve Return" button
-        const actionBtn = isOwn && !isApprover
-          ? `<button class="teal-btn" onclick="submitReturnRequest(${r.LogID}, '${r.Brand} ${r.Model}')">Request Return</button>`
-          : isApprover
-            ? `<button class="teal-btn" onclick="returnAsset(${r.LogID}, '${r.Brand} ${r.Model}', ${r.DailyCost})">Approve Return</button>`
+        // IT/Admin always gets Approve Return — even for their own borrows
+        // Employee only gets Request Return for their own borrows
+        const actionBtn = isApprover
+          ? `<button class="teal-btn" onclick="returnAsset(${r.LogID}, '${r.Brand} ${r.Model}', ${r.DailyCost})">Approve Return</button>`
+          : isOwn
+            ? `<button class="teal-btn" onclick="submitReturnRequest(${r.LogID}, '${r.Brand} ${r.Model}')">Request Return</button>`
             : '—';
         return `<tr ${isOverdue ? 'style="background:rgba(255,68,68,0.08);"' : ''}>
           <td>${r.Brand} ${r.Model}<br><span style="font-size:11px;color:var(--muted);">ID: ${r.AssetID}</span></td>
@@ -725,10 +738,12 @@ async function renderPendingReturnRequests() {
 async function reviewReturnRequest(requestId, action) {
   const denyReason = action === 'deny' ? prompt('Reason for denial:') : null;
   if (action === 'deny' && denyReason === null) return; // cancelled
+  const note = action === 'approve' ? prompt('Optional note for the employee (leave blank for none):') : null;
+  if (action === 'approve' && note === null) return; // cancelled
   try {
     const res  = await authFetch(`${API}/return-requests/${requestId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, reviewedBy: currentUser.username, denyReason }),
+      body: JSON.stringify({ action, reviewedBy: currentUser.username, denyReason, note }),
     });
     const data = await res.json();
     if (res.ok) {
@@ -803,13 +818,21 @@ function closeReturnModal() {
 
 // ─── BORROW HISTORY ──────────────────────────────────────────────────────────
 async function renderBorrowHistory() {
+  const isAdmin = currentUser && currentUser.level >= CLEARANCE.IT;
+  const titleEl = document.getElementById('borrow-history-title');
+  if (titleEl) titleEl.textContent = isAdmin ? 'Borrow History (All Users)' : 'My Borrow History';
+
   const tbody = document.getElementById('history-tbody');
   tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
   try {
     const res  = await fetch(`${API}/borrows/history`);
-    const rows = await res.json();
+    let   rows = await res.json();
+
+    // Employees see only their own history
+    if (!isAdmin) rows = rows.filter(r => r.BorrowedBy === currentUser?.username);
+
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">No history yet.</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--muted);padding:20px;">${isAdmin ? 'No history yet.' : 'You have no borrow history yet.'}</td></tr>`;
       return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -828,6 +851,168 @@ async function renderBorrowHistory() {
   } catch {
     tbody.innerHTML = '<tr><td colspan="6" style="color:#ff4444;padding:20px;">Failed to load history.</td></tr>';
   }
+}
+
+// ─── BORROW REQUESTS (IT/Admin approves or denies) ───────────────────────────
+async function renderBorrowRequests() {
+  const pendingTbody = document.getElementById('borrow-req-pending-tbody');
+  const allTbody     = document.getElementById('borrow-req-all-tbody');
+  if (!pendingTbody) return;
+  pendingTbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
+  allTbody.innerHTML     = '<tr><td colspan="6" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
+  const statusColor = { Pending:'#ff8800', Approved:'#00e5c8', Denied:'#ff4444' };
+
+  try {
+    const res  = await authFetch(`${API}/borrow-requests`);
+    const rows = await res.json();
+    const pending = rows.filter(r => r.Status === 'Pending');
+
+    pendingTbody.innerHTML = pending.length
+      ? pending.map(r => `
+        <tr style="background:rgba(255,136,0,0.06);">
+          <td>${r.Brand} ${r.Model}<br><span style="font-size:11px;color:var(--muted);">S/N: ${r.SerialNumber}</span></td>
+          <td>${r.RequestedBy}</td>
+          <td>${r.DueDate ? new Date(r.DueDate).toLocaleDateString() : '—'}</td>
+          <td style="color:#00e5c8;">₱${parseFloat(r.DailyCost||0).toFixed(2)}/day</td>
+          <td style="font-size:11px;color:var(--muted);">${new Date(r.CreatedAt).toLocaleString()}</td>
+          <td>
+            <button class="teal-btn" style="margin-right:6px;" onclick="reviewBorrowRequest(${r.RequestID},'approve')">✓ Approve</button>
+            <button class="add-btn" onclick="reviewBorrowRequest(${r.RequestID},'deny')">✕ Deny</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--muted);padding:16px;">No pending borrow requests.</td></tr>';
+
+    allTbody.innerHTML = rows.length
+      ? rows.map(r => `
+        <tr>
+          <td>${r.Brand} ${r.Model}</td>
+          <td>${r.RequestedBy}</td>
+          <td>${r.DueDate ? new Date(r.DueDate).toLocaleDateString() : '—'}</td>
+          <td style="color:${statusColor[r.Status]||'#fff'};">${r.Status}</td>
+          <td>${r.ReviewedBy || '—'}</td>
+          <td style="font-size:11px;color:${r.Status==='Denied'?'#ff8888':'var(--muted)'};">${r.DenyReason || '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--muted);padding:16px;">No requests yet.</td></tr>';
+  } catch {
+    pendingTbody.innerHTML = '<tr><td colspan="6" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>';
+  }
+
+  // Return requests — shown in the same unified Requests page
+  const returnPendingTbody = document.getElementById('req-page-return-pending-tbody');
+  const returnAllTbody     = document.getElementById('req-page-return-all-tbody');
+  if (!returnPendingTbody) return;
+  returnPendingTbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
+  returnAllTbody.innerHTML     = '<tr><td colspan="5" style="color:var(--muted);padding:20px;">Loading…</td></tr>';
+
+  try {
+    const res  = await authFetch(`${API}/return-requests`);
+    const rows = await res.json();
+    const pending = rows.filter(r => r.Status === 'Pending');
+
+    returnPendingTbody.innerHTML = pending.length
+      ? pending.map(r => `
+        <tr style="background:rgba(255,136,0,0.06);">
+          <td>${r.Brand} ${r.Model}</td>
+          <td>${r.RequestedBy}</td>
+          <td>${new Date(r.CreatedAt).toLocaleDateString()}</td>
+          <td style="color:#00e5c8;">${peso(r.DailyCost)}/day</td>
+          <td>
+            <button class="teal-btn" style="margin-right:6px;" onclick="reviewReturnRequest(${r.RequestID},'approve')">✓ Approve</button>
+            <button class="add-btn" onclick="reviewReturnRequest(${r.RequestID},'deny')">✕ Deny</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" style="color:var(--muted);padding:16px;">No pending return requests.</td></tr>';
+
+    returnAllTbody.innerHTML = rows.length
+      ? rows.map(r => `
+        <tr>
+          <td>${r.Brand} ${r.Model}</td>
+          <td>${r.RequestedBy}</td>
+          <td style="color:${statusColor[r.Status]||'#fff'};">${r.Status}</td>
+          <td>${r.ReviewedBy || '—'}</td>
+          <td style="font-size:11px;color:${r.Status==='Denied'?'#ff8888':'var(--muted)'};">${r.DenyReason || '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" style="color:var(--muted);padding:16px;">No requests yet.</td></tr>';
+
+    // Keep the little badge/section on the Returns page in sync too, since it
+    // shares the same underlying data and some approvers may still land there first.
+    updateAllNotifBadges();
+  } catch {
+    returnPendingTbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>';
+  }
+}
+
+async function reviewBorrowRequest(requestId, action) {
+  const denyReason = action === 'deny' ? prompt('Reason for denial:') : null;
+  if (action === 'deny' && denyReason === null) return; // cancelled
+  const note = action === 'approve' ? prompt('Optional note for the employee (leave blank for none):') : null;
+  if (action === 'approve' && note === null) return; // cancelled
+  try {
+    const res  = await authFetch(`${API}/borrow-requests/${requestId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, reviewedBy: currentUser.username, denyReason, note }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showNotif(action === 'approve' ? '✓ Borrow approved — asset is now In Use' : '✕ Borrow request denied');
+      await loadAssets();
+      renderBorrowRequests();
+      refreshNotifications();
+    } else showNotif('Failed: ' + (data.message || 'Unknown'));
+  } catch { showNotif('Server offline'); }
+}
+
+// ─── MY REQUESTS (Employee sees own borrow + return requests) ─────────────────
+async function renderMyRequests() {
+  const borrowTbody = document.getElementById('my-borrow-req-tbody');
+  const returnTbody = document.getElementById('my-return-req-tbody');
+  if (!borrowTbody) return;
+  borrowTbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:16px;">Loading…</td></tr>';
+  returnTbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);padding:16px;">Loading…</td></tr>';
+  const statusColor = { Pending:'#ff8800', Approved:'#00e5c8', Denied:'#ff4444' };
+  try {
+    const [brRes, rrRes] = await Promise.all([
+      fetch(`${API}/borrow-requests/mine/${currentUser.username}`),
+      fetch(`${API}/return-requests/mine/${currentUser.username}`),
+    ]);
+    const borrowReqs = await brRes.json();
+    const returnReqs = await rrRes.json();
+    borrowTbody.innerHTML = borrowReqs.length
+      ? borrowReqs.map(r => `
+        <tr>
+          <td>${r.Brand} ${r.Model}</td>
+          <td>${r.DueDate ? new Date(r.DueDate).toLocaleDateString() : '—'}</td>
+          <td style="font-size:11px;color:var(--muted);">${new Date(r.CreatedAt).toLocaleString()}</td>
+          <td style="color:${statusColor[r.Status]||'#fff'};">${r.Status}</td>
+          <td style="font-size:11px;color:${r.Status==='Denied'?'#ff8888':'var(--muted)'};">${r.DenyReason || '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" style="color:var(--muted);padding:12px;">No borrow requests yet.</td></tr>';
+    returnTbody.innerHTML = returnReqs.length
+      ? returnReqs.map(r => `
+        <tr>
+          <td>${r.Brand} ${r.Model}</td>
+          <td style="font-size:11px;color:var(--muted);">${new Date(r.CreatedAt).toLocaleString()}</td>
+          <td style="color:${statusColor[r.Status]||'#fff'};">${r.Status}</td>
+          <td style="font-size:11px;color:${r.Status==='Denied'?'#ff8888':'var(--muted)'};">${r.DenyReason || '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" style="color:var(--muted);padding:12px;">No return requests yet.</td></tr>';
+  } catch {
+    borrowTbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;">Failed to load.</td></tr>';
+  }
+}
+
+// ─── CART TOTAL CALCULATOR ────────────────────────────────────────────────────
+function updateCartTotal() {
+  const rd      = document.getElementById('return-date').value;
+  const daysEl  = document.getElementById('cart-days');
+  const totalEl = document.getElementById('cart-total');
+  if (!rd || !daysEl || !totalEl) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due   = new Date(rd);
+  const days  = Math.max(1, Math.ceil((due - today) / (1000 * 60 * 60 * 24)));
+  const total = cart.reduce((sum, a) => sum + (parseFloat(a.dailyCost) || 0) * days, 0);
+  daysEl.textContent  = days + ' day(s)';
+  totalEl.textContent = peso(total);
 }
 
 // ─── MAINTENANCE ─────────────────────────────────────────────────────────────
@@ -1555,7 +1740,7 @@ async function renderWallets() {
     } catch { tbody.innerHTML = '<tr><td colspan="5" style="color:#ff4444;padding:20px;">Failed to load.</td></tr>'; }
   } else {
     try {
-      const res  = await fetch(`${API}/wallet/${currentUser.username}`);
+      const res  = await authFetch(`${API}/wallet/${currentUser.username}`);
       const data = await res.json();
       const bal  = parseFloat(data.balance ?? currentUser.wallet ?? 0);
       currentUser.wallet = bal;

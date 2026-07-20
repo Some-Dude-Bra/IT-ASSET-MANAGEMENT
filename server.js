@@ -356,7 +356,18 @@ app.get('/wallets', requireLevel(CLEARANCE.ADMIN), (_req, res) => {
   });
 });
 
+// Only the wallet owner or an Admin may view a wallet's balance/history —
+// everyone else (including IT/Manager) is blocked, even via a direct API call.
+function canViewWallet(req, targetUsername) {
+  const lvl      = parseInt(req.headers['x-user-level'], 10) || 0;
+  const username = req.headers['x-username'];
+  return lvl >= CLEARANCE.ADMIN || username === targetUsername;
+}
+
 app.get('/wallet/:username', (req, res) => {
+  if (!canViewWallet(req, req.params.username)) {
+    return res.status(403).json({ message: 'You can only view your own wallet' });
+  }
   q('SELECT wallet FROM Users WHERE username=?', [req.params.username], (err, rows) => {
     if (err || !rows.length) return res.status(404).json({ message: 'User not found' });
     res.json({ username: req.params.username, balance: rows[0].wallet });
@@ -364,6 +375,9 @@ app.get('/wallet/:username', (req, res) => {
 });
 
 app.get('/wallet/:username/history', (req, res) => {
+  if (!canViewWallet(req, req.params.username)) {
+    return res.status(403).json({ message: 'You can only view your own wallet history' });
+  }
   q('SELECT TxID,Amount,Type,Note,CreatedAt FROM WalletLog WHERE Username=? ORDER BY CreatedAt DESC LIMIT 50',
     [req.params.username], (err, rows) => {
       if (err) return res.status(500).json({ message: err.message });
@@ -1050,8 +1064,11 @@ app.get('/borrow-requests/mine/:username', (req, res) => {
 // IT/Admin approves or denies a borrow request
 app.patch('/borrow-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
   const reqId  = parseInt(req.params.id, 10);
-  const { action, reviewedBy, denyReason } = req.body;
+  const { action, reviewedBy, denyReason, note } = req.body;
   if (!['approve','deny'].includes(action)) return res.status(400).json({ message: 'action must be approve or deny' });
+  // DenyReason doubles as a general review note for both approve and deny —
+  // required-ish for deny (falls back to a default), fully optional for approve.
+  const reviewNote = action === 'deny' ? (denyReason || 'Request denied') : (note || null);
 
   q('SELECT * FROM BorrowRequests WHERE RequestID=? AND Status=?', [reqId, 'Pending'], (err, rows) => {
     if (err || !rows.length) return res.status(404).json({ message: 'Pending request not found' });
@@ -1059,7 +1076,7 @@ app.patch('/borrow-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
 
     if (action === 'deny') {
       q('UPDATE BorrowRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW(), DenyReason=? WHERE RequestID=?',
-        ['Denied', reviewedBy||'IT', denyReason||'Request denied', reqId], (uErr) => {
+        ['Denied', reviewedBy||'IT', reviewNote, reqId], (uErr) => {
           if (uErr) return res.status(500).json({ message: uErr.message });
           res.json({ message: 'Borrow request denied' });
         });
@@ -1075,8 +1092,8 @@ app.patch('/borrow-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
         [br.AssetID, br.RequestedBy, br.DueDate, cost], (iErr) => {
           if (iErr) return res.status(500).json({ message: iErr.message });
           q("UPDATE HardwareInventory SET Status='In Use', UpdatedAt=NOW() WHERE AssetID=?", [br.AssetID], () => {});
-          q('UPDATE BorrowRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW() WHERE RequestID=?',
-            ['Approved', reviewedBy||'IT', reqId], () => {});
+          q('UPDATE BorrowRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW(), DenyReason=? WHERE RequestID=?',
+            ['Approved', reviewedBy||'IT', reviewNote, reqId], () => {});
           res.json({ message: 'Borrow request approved — asset is now In Use' });
         });
     });
@@ -1136,8 +1153,9 @@ app.get('/return-requests/mine/:username', (req, res) => {
 // IT/Admin approves or denies a return request
 app.patch('/return-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
   const reqId = parseInt(req.params.id, 10);
-  const { action, reviewedBy, denyReason } = req.body;
+  const { action, reviewedBy, denyReason, note } = req.body;
   if (!['approve','deny'].includes(action)) return res.status(400).json({ message: 'action must be approve or deny' });
+  const reviewNote = action === 'deny' ? (denyReason || 'Request denied') : (note || null);
 
   q('SELECT * FROM ReturnRequests WHERE RequestID=? AND Status=?', [reqId, 'Pending'], (err, rows) => {
     if (err || !rows.length) return res.status(404).json({ message: 'Pending return request not found' });
@@ -1145,7 +1163,7 @@ app.patch('/return-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
 
     if (action === 'deny') {
       q('UPDATE ReturnRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW(), DenyReason=? WHERE RequestID=?',
-        ['Denied', reviewedBy||'IT', denyReason||'Request denied', reqId], (uErr) => {
+        ['Denied', reviewedBy||'IT', reviewNote, reqId], (uErr) => {
           if (uErr) return res.status(500).json({ message: uErr.message });
           res.json({ message: 'Return request denied' });
         });
@@ -1170,8 +1188,8 @@ app.patch('/return-requests/:id', requireLevel(CLEARANCE.IT), (req, res) => {
               [log.BorrowedBy, charge, 'debit', `Return approved: Asset #${log.AssetID} (${days}d × ₱${log.DailyCost}/day)`], () => {});
           }
           q("UPDATE HardwareInventory SET Status='Available', UpdatedAt=NOW() WHERE AssetID=?", [log.AssetID], () => {});
-          q('UPDATE ReturnRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW() WHERE RequestID=?',
-            ['Approved', reviewedBy||'IT', reqId], () => {});
+          q('UPDATE ReturnRequests SET Status=?, ReviewedBy=?, ReviewedAt=NOW(), DenyReason=? WHERE RequestID=?',
+            ['Approved', reviewedBy||'IT', reviewNote, reqId], () => {});
           res.json({ message: 'Return approved', totalCharge: charge, days, borrowedBy: log.BorrowedBy });
         });
     });

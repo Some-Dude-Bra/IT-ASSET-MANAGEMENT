@@ -22,15 +22,52 @@
       <div id="login-error" class="login-error"></div>
       <button class="login-btn" onclick="doLogin()">Log in</button>
 
-      <div style="margin-top:22px;padding:14px 16px;background:rgba(0,229,200,0.05);border:1px dashed var(--border,rgba(0,229,200,0.3));border-radius:10px;">
-        <div style="font-family:'Orbitron',monospace;font-size:10px;color:var(--teal,#00e5c8);letter-spacing:1.5px;margin-bottom:8px;">🧪 DEMO ACCOUNTS — password is "password" for all</div>
-        <table style="width:100%;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted,#888);border-collapse:collapse;">
-          <tr style="cursor:pointer;" onclick="fillLogin('tony.stark')"><td style="padding:2px 0;color:#fff;">tony.stark</td><td style="padding:2px 0;">Admin</td></tr>
-          <tr style="cursor:pointer;" onclick="fillLogin('bruce.wayne')"><td style="padding:2px 0;color:#fff;">bruce.wayne</td><td style="padding:2px 0;">Manager</td></tr>
-          <tr style="cursor:pointer;" onclick="fillLogin('tim.drake')"><td style="padding:2px 0;color:#fff;">tim.drake</td><td style="padding:2px 0;">Employee</td></tr>
-          <tr style="cursor:pointer;" onclick="fillLogin('jason.todd')"><td style="padding:2px 0;color:#fff;">jason.todd</td><td style="padding:2px 0;">Maintenance</td></tr>
-        </table>
-        <div style="font-size:10px;color:var(--muted,#888);margin-top:6px;">Click a row to fill in the username</div>
+      <div style="margin-top:22px;padding:16px;background:rgba(0,229,200,0.04);border:1px dashed rgba(0,229,200,0.25);border-radius:12px;">
+        <div style="font-family:'Orbitron',monospace;font-size:10px;color:var(--teal,#00e5c8);letter-spacing:1.5px;margin-bottom:12px;">🧪 DEMO ACCOUNTS</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+
+          <!-- Admin -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);border-radius:8px;cursor:pointer;" onclick="fillLogin('tony.stark')">
+            <div>
+              <div style="font-family:'Orbitron',monospace;font-size:11px;color:#ff6666;letter-spacing:1px;">ADMIN</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#fff;margin-top:2px;">tony.stark</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted,#888);">Full access to everything</div>
+            </div>
+            <div style="font-size:20px;">👑</div>
+          </div>
+
+          <!-- IT Department -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(0,150,255,0.08);border:1px solid rgba(0,150,255,0.3);border-radius:8px;cursor:pointer;" onclick="fillLogin('bruce.wayne')">
+            <div>
+              <div style="font-family:'Orbitron',monospace;font-size:11px;color:#4499ff;letter-spacing:1px;">IT DEPARTMENT</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#fff;margin-top:2px;">bruce.wayne</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted,#888);">Borrow, returns, maintenance, requests</div>
+            </div>
+            <div style="font-size:20px;">🖥️</div>
+          </div>
+
+          <!-- Employee -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(0,229,200,0.06);border:1px solid rgba(0,229,200,0.2);border-radius:8px;cursor:pointer;" onclick="fillLogin('tim.drake')">
+            <div>
+              <div style="font-family:'Orbitron',monospace;font-size:11px;color:#00e5c8;letter-spacing:1px;">EMPLOYEE</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#fff;margin-top:2px;">tim.drake</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted,#888);">Borrow assets, view own wallet</div>
+            </div>
+            <div style="font-size:20px;">👤</div>
+          </div>
+
+          <!-- Student -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(150,150,150,0.08);border:1px solid rgba(150,150,150,0.2);border-radius:8px;cursor:pointer;" onclick="fillLogin('jason.todd')">
+            <div>
+              <div style="font-family:'Orbitron',monospace;font-size:11px;color:#aaa;letter-spacing:1px;">STUDENT</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:12px;color:#fff;margin-top:2px;">jason.todd</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted,#888);">Departments and settings only</div>
+            </div>
+            <div style="font-size:20px;">🎓</div>
+          </div>
+
+        </div>
+        <div style="font-size:10px;color:var(--muted,#888);margin-top:10px;font-family:'Share Tech Mono',monospace;">Password for all: <span style="color:#00e5c8;">password</span> — click a card to fill</div>
       </div>
     </div>
   </div>
@@ -294,9 +331,25 @@
       <thead><tr><th>Asset ID</th><th>Model Name</th><th>Daily Cost</th><th>Status</th><th></th></tr></thead>
       <tbody id="cart-tbody"></tbody>
     </table>
-    <div style="text-align:center;margin-top:20px;">
-      <label style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-right:12px;">Return Date:</label>
-      <input type="date" id="return-date" class="field-input" style="width:180px;display:inline-block;margin-right:16px;">
+    <div style="background:rgba(0,229,200,0.05);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px;font-family:'Share Tech Mono',monospace;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+        <span style="color:var(--muted);">Return Date:</span>
+        <input type="date" id="return-date" class="field-input" style="width:180px;font-size:12px;" onchange="updateCartTotal()">
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+        <span style="color:var(--muted);">Estimated days:</span>
+        <span id="cart-days" style="color:#fff;">—</span>
+      </div>
+      <div style="border-top:1px solid var(--border);margin:8px 0;"></div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:#fff;font-family:'Orbitron',monospace;font-size:12px;">Estimated Total:</span>
+        <span id="cart-total" style="color:#00e5c8;font-weight:700;font-size:16px;">₱0.00</span>
+      </div>
+      <div id="cart-role-notice" style="margin-top:10px;font-size:11px;color:#ff8800;display:none;">
+        📋 As an Employee your borrow will be submitted as a <strong>request</strong> for IT/Admin to approve.
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:8px;">
       <button class="teal-btn" onclick="borrowCart()">Confirm Borrow</button>
     </div>
   </div>
@@ -346,10 +399,82 @@
   </div>
   <div class="page-content">
     <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
-    <p class="section-title">Borrow History</p>
+    <p class="section-title" id="borrow-history-title">Borrow History</p>
     <table class="asset-table">
       <thead><tr><th>Asset</th><th>Borrowed By</th><th>Borrowed On</th><th>Returned</th><th>Charged</th><th>Status</th></tr></thead>
       <tbody id="history-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════ REQUESTS PAGE (IT/Admin approves or denies borrow + return requests) ══════ -->
+<div id="page-borrow-requests" class="page">
+  <div class="topbar">
+    <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <p class="section-title">Requests</p>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">All borrow and return requests from employees, in one place.</p>
+
+    <!-- Pending BORROW requests — action needed -->
+    <p class="section-title" style="font-size:13px;color:var(--teal);margin-bottom:8px;">📦 Pending Borrow Requests</p>
+    <table class="asset-table" style="margin-bottom:28px;">
+      <thead><tr><th>Asset</th><th>Requested By</th><th>Due Date</th><th>Daily Cost</th><th>Submitted</th><th>Action</th></tr></thead>
+      <tbody id="borrow-req-pending-tbody"></tbody>
+    </table>
+
+    <!-- Pending RETURN requests — action needed -->
+    <p class="section-title" style="font-size:13px;color:var(--teal);margin-bottom:8px;">↩ Pending Return Requests</p>
+    <table class="asset-table" style="margin-bottom:28px;">
+      <thead><tr><th>Asset</th><th>Requested By</th><th>Date</th><th>Daily Cost</th><th>Action</th></tr></thead>
+      <tbody id="req-page-return-pending-tbody"></tbody>
+    </table>
+
+    <!-- All borrow requests history -->
+    <p class="section-title" style="font-size:13px;color:var(--muted);margin-bottom:8px;">📋 Borrow Requests History</p>
+    <table class="asset-table" style="margin-bottom:28px;">
+      <thead><tr><th>Asset</th><th>Requested By</th><th>Due Date</th><th>Status</th><th>Reviewed By</th><th>Note</th></tr></thead>
+      <tbody id="borrow-req-all-tbody"></tbody>
+    </table>
+
+    <!-- All return requests history -->
+    <p class="section-title" style="font-size:13px;color:var(--muted);margin-bottom:8px;">📋 Return Requests History</p>
+    <table class="asset-table">
+      <thead><tr><th>Asset</th><th>Requested By</th><th>Status</th><th>Reviewed By</th><th>Note</th></tr></thead>
+      <tbody id="req-page-return-all-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════ MY BORROW REQUESTS PAGE (Employee sees own requests) ══════ -->
+<div id="page-my-requests" class="page">
+  <div class="topbar">
+    <div class="topbar-left"><div class="cart-icon" onclick="gotoCart()"><i class="fa-solid fa-cart-shopping"></i></div></div>
+    <div class="topbar-right">
+      <button class="notif-btn" onclick="toggleNotifPanel()"><i class="fa-solid fa-bell"></i><span class="notif-badge">0</span></button>
+      <div class="user-avatar" onclick="nav('profile')"><i class="fa-solid fa-user"></i></div>
+    </div>
+  </div>
+  <div class="page-content">
+    <button class="back-btn" onclick="nav('dashboard')"><i class="fa-solid fa-arrow-left"></i> Back</button>
+    <p class="section-title">My Requests</p>
+    <p style="font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:16px;">Track your borrow and return requests here.</p>
+
+    <p class="section-title" style="font-size:13px;margin-bottom:8px;">📦 Borrow Requests</p>
+    <table class="asset-table" style="margin-bottom:24px;">
+      <thead><tr><th>Asset</th><th>Due Date</th><th>Submitted</th><th>Status</th><th>Note/Reason</th></tr></thead>
+      <tbody id="my-borrow-req-tbody"></tbody>
+    </table>
+
+    <p class="section-title" style="font-size:13px;margin-bottom:8px;">↩ Return Requests</p>
+    <table class="asset-table">
+      <thead><tr><th>Asset</th><th>Submitted</th><th>Status</th><th>Note/Reason</th></tr></thead>
+      <tbody id="my-return-req-tbody"></tbody>
     </table>
   </div>
 </div>
