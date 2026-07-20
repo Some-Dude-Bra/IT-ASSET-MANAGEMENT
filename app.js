@@ -2,7 +2,7 @@
 // Auto-detects local vs deployed — no need to change this manually
 const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   ? 'http://localhost:20240'
-  : `${window.location.protocol}//${window.location.hostname}:20240`;
+  : `${window.location.protocol}//${window.location.hostname}`;
 
 // ─── AUTH FETCH ──────────────────────────────────────────────────────────────
 // Wraps fetch() and attaches the logged-in user's clearance level so the server
