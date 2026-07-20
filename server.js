@@ -177,6 +177,14 @@ function initTables() {
     DenyReason  VARCHAR(255) DEFAULT NULL,
     CreatedAt   DATETIME    DEFAULT CURRENT_TIMESTAMP
   )`, 'BorrowRequests table');
+  // Safety net: if BorrowRequests already existed from an older/different
+  // schema (e.g. imported from a stale .sql export), make sure it still has
+  // every column this app relies on, instead of silently failing at query time.
+  ['ALTER TABLE BorrowRequests ADD COLUMN IF NOT EXISTS ReviewedBy VARCHAR(50) DEFAULT NULL',
+   'ALTER TABLE BorrowRequests ADD COLUMN IF NOT EXISTS ReviewedAt DATETIME DEFAULT NULL',
+   'ALTER TABLE BorrowRequests ADD COLUMN IF NOT EXISTS DenyReason VARCHAR(255) DEFAULT NULL',
+   'ALTER TABLE BorrowRequests ADD COLUMN IF NOT EXISTS CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP',
+  ].forEach(sql => db.query(sql, () => {}));
 
   // ── ReturnRequests (Employee submits → IT/Admin approves or denies) ──────────
   runQ(`CREATE TABLE IF NOT EXISTS ReturnRequests (
